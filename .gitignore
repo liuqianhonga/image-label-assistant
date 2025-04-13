@@ -1,0 +1,6 @@
+__pycache__
+
+# Python虚拟环境
+venv/
+
+data.json
