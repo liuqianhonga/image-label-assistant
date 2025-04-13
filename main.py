@@ -227,7 +227,10 @@ class LabelingThread(QThread):
         super().__init__()
         self.image_path = image_path
         self.row = row
+        
+        # 确保复制labeler的配置，而不是直接引用
         self.labeler = labeler
+        
         self.batch_mode = False
         self.image_paths = []  # [(row, image_path), ...]
         
@@ -678,7 +681,15 @@ class ImageLabelAssistant(QMainWindow):
     
     def label_image(self, row):
         """标注单个图像"""
+        # 检查API配置
+        gemini_config = config.get_gemini_config()
+        if not gemini_config.get('api_key'):
+            QMessageBox.warning(self, "API密钥未配置", "请先配置Gemini API密钥")
+            return
             
+        # 重新应用配置确保labeler是最新的
+        self.apply_gemini_config(gemini_config)
+        
         image_path = self.image_files[row]
         
         # 禁用打标按钮并更改文本
@@ -870,6 +881,15 @@ class ImageLabelAssistant(QMainWindow):
         
         if result != QMessageBox.Yes:
             return
+            
+        # 检查API配置
+        gemini_config = config.get_gemini_config()
+        if not gemini_config.get('api_key'):
+            QMessageBox.warning(self, "API密钥未配置", "请先配置Gemini API密钥")
+            return
+            
+        # 重新应用配置确保labeler是最新的
+        self.apply_gemini_config(gemini_config)
             
         # 禁用按钮避免重复点击
         self.label_all_btn.setEnabled(False)
