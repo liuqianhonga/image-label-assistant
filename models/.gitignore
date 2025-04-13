@@ -1,0 +1,4 @@
+# 忽略models目录中的所有文件
+*
+# 不忽略.gitignore文件本身
+!.gitignore

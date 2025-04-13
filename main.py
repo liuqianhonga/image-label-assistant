@@ -284,6 +284,18 @@ class ImageLabelAssistant(QMainWindow):
         self.image_files = []
         self.content_modified = False  # 标记内容是否被修改
         
+        # 初始化标注器
+        self.labeler = ImageLabeler()
+        
+        # 设置默认的模型选择（与UI中的选择保持一致）
+        selected_model = self.model_combo.currentText()
+        if self.model_combo.currentIndex() > 0:  # 如果选择的不是Gemini
+            self.labeler.use_hf_model = True
+            self.labeler.hf_model_id = selected_model
+            # 更新打标按钮名称
+            display_name = selected_model.split('/')[-1]
+            self.label_all_btn.setText(f"一键打标 ({display_name})")
+        
         # 加载保存的目录列表和配置
         self.load_data()
         
@@ -378,13 +390,32 @@ class ImageLabelAssistant(QMainWindow):
         # 按钮区域
         button_layout = QHBoxLayout()
         
+        # 创建横向布局，用于放置模型选择和标签
+        model_selection_layout = QHBoxLayout()
+        
+        # 模型选择下拉菜单
+        model_selection_layout.addWidget(QLabel("模型:"))
+        self.model_combo = QComboBox()
+        self.model_combo.addItems(["Gemini", "MiaoshouAI/Florence-2-large-PromptGen-v2.0", 
+                                  "MiaoshouAI/Florence-2-base-PromptGen-v2.0", 
+                                  "microsoft/Florence-2-large-ft", 
+                                  "microsoft/Florence-2-base-ft", 
+                                  "microsoft/Florence-2-large", 
+                                  "microsoft/Florence-2-base"])
+        self.model_combo.setCurrentIndex(1)  # 默认使用第一个Florence模型
+        self.model_combo.currentIndexChanged.connect(self.on_model_changed)
+        model_selection_layout.addWidget(self.model_combo)
+        
+        button_layout.addLayout(model_selection_layout)
+        
         # 触发词输入框
         trigger_label = QLabel("触发词:")
         self.trigger_input = QLineEdit()
         self.trigger_input.setPlaceholderText("输入触发词，将添加到标签前面")
         
         # 按钮
-        self.label_all_btn = QPushButton("一键打标")
+        selected_model = self.model_combo.currentText()  # 获取当前选择的模型名称
+        self.label_all_btn = QPushButton(f"一键打标 ({selected_model})")
         self.label_all_btn.clicked.connect(self.label_all_images)
         self.save_all_btn = QPushButton("一键保存")
         self.save_all_btn.clicked.connect(self.save_all_labels)
@@ -433,8 +464,6 @@ class ImageLabelAssistant(QMainWindow):
         main_splitter.addWidget(right_widget)
         main_splitter.setSizes([300, 900])
         
-        self.labeler = ImageLabeler()
-    
     def show_gemini_config(self):
         """显示Gemini配置对话框"""
         # 获取当前配置
@@ -681,14 +710,31 @@ class ImageLabelAssistant(QMainWindow):
     
     def label_image(self, row):
         """标注单个图像"""
-        # 检查API配置
-        gemini_config = config.get_gemini_config()
-        if not gemini_config.get('api_key'):
-            QMessageBox.warning(self, "API密钥未配置", "请先配置Gemini API密钥")
-            return
+        # 检查是否使用Gemini并确保API配置
+        if self.model_combo.currentIndex() == 0:  # Gemini
+            # 检查API配置
+            gemini_config = config.get_gemini_config()
+            if not gemini_config.get('api_key'):
+                QMessageBox.warning(self, "API密钥未配置", "请先配置Gemini API密钥")
+                return
+                
+            # 重新应用配置确保labeler是最新的
+            self.apply_gemini_config(gemini_config)
+        else:  # Huggingface模型
+            # 获取当前选择的模型名称
+            model_id = self.model_combo.currentText()
+            model_short_name = model_id.split('/')[-1]
             
-        # 重新应用配置确保labeler是最新的
-        self.apply_gemini_config(gemini_config)
+            # 如果是首次使用该模型，显示加载提示
+            if self.labeler.hf_model is None or self.labeler.hf_model.get("model_id") != model_id:
+                # 显示加载消息
+                msg = QMessageBox(self)
+                msg.setIcon(QMessageBox.Information)
+                msg.setText(f"正在加载模型 {model_short_name}，这可能需要几分钟时间...\n首次使用时需要下载模型（约2GB）")
+                msg.setWindowTitle("加载模型")
+                msg.show()
+                QApplication.processEvents()  # 确保UI能够更新
+                self.msg = msg  # 保存引用以便后续关闭
         
         image_path = self.image_files[row]
         
@@ -697,11 +743,20 @@ class ImageLabelAssistant(QMainWindow):
         label_button.setText("正在打标...")
         label_button.setEnabled(False)
         
+        # 同时禁用翻译按钮，避免用户在打标过程中尝试翻译
+        translate_button = self.table.cellWidget(row, 3)
+        if translate_button:
+            translate_button.setEnabled(False)
+        
         # 创建并启动打标线程
         self.labeling_thread = LabelingThread(image_path, row, self.labeler)
         self.labeling_thread.labeling_done.connect(self.on_labeling_done)
         self.labeling_thread.labeling_failed.connect(self.on_labeling_failed)
         self.labeling_thread.start()
+        
+        # 关闭加载提示（如果存在）
+        if hasattr(self, 'msg') and self.msg.isVisible():
+            self.msg.close()
     
     def on_labeling_done(self, row, result):
         """打标成功的回调函数"""
@@ -747,6 +802,12 @@ class ImageLabelAssistant(QMainWindow):
         label_button = self.table.cellWidget(row, 4)
         label_button.setText("打标")
         label_button.setEnabled(True)
+        
+        # 恢复翻译按钮
+        translate_button = self.table.cellWidget(row, 3)
+        if translate_button:
+            translate_button.setText("翻译")
+            translate_button.setEnabled(True)
     
     def on_labeling_failed(self, row, error_msg):
         """打标失败的回调函数"""
@@ -755,6 +816,12 @@ class ImageLabelAssistant(QMainWindow):
         if label_button:
             label_button.setText("打标")
             label_button.setEnabled(True)
+            
+        # 恢复翻译按钮
+        translate_button = self.table.cellWidget(row, 3)
+        if translate_button:
+            translate_button.setText("翻译")
+            translate_button.setEnabled(True)
     
     def translate_label(self, row):
         """翻译单个标签"""
@@ -856,62 +923,90 @@ class ImageLabelAssistant(QMainWindow):
         # 启动线程
         self.batch_translate_thread.start()
     
-    def on_all_translations_completed(self, translated_count):
-        """所有翻译完成后的回调"""
-        # 恢复一键翻译按钮
+    def on_all_translations_completed(self, success_count):
+        """所有翻译完成时的处理"""
+        # 恢复按钮状态
         self.translate_all_btn.setText("一键翻译")
         self.translate_all_btn.setEnabled(True)
         
-        # 显示完成消息
-        QMessageBox.information(self, "翻译完成", f"已成功翻译 {translated_count} 个标签")
+        # 确保所有翻译按钮都已启用
+        for row in range(len(self.image_files)):
+            translate_button = self.table.cellWidget(row, 3)
+            if translate_button and not translate_button.isEnabled():
+                translate_button.setText("翻译")
+                translate_button.setEnabled(True)
         
+        # 根据是否有成功翻译的标签显示不同消息
+        if success_count > 0:
+            QMessageBox.information(self, "翻译完成", f"成功翻译了 {success_count} 个标签")
+        else:
+            QMessageBox.information(self, "翻译完成", "没有标签被成功翻译")
+    
     def label_all_images(self):
         """标注所有图像"""
         if not self.image_files:
             QMessageBox.information(self, "提示", "没有可标注的图像")
             return
             
-        # 显示确认对话框
+        # 确认操作
         result = QMessageBox.question(
             self, 
             "确认操作", 
-            "此操作将对当前目录的所有图像重新打标，已有的标签将被覆盖。是否继续？",
+            "此操作将标注所有未标注的图像，是否继续？",
             QMessageBox.Yes | QMessageBox.No
         )
         
         if result != QMessageBox.Yes:
             return
             
-        # 检查API配置
-        gemini_config = config.get_gemini_config()
-        if not gemini_config.get('api_key'):
-            QMessageBox.warning(self, "API密钥未配置", "请先配置Gemini API密钥")
-            return
+        # 如果使用Gemini模型，检查API配置
+        if self.model_combo.currentIndex() == 0:  # Gemini
+            # 检查API配置
+            gemini_config = config.get_gemini_config()
+            if not gemini_config.get('api_key'):
+                QMessageBox.warning(self, "API密钥未配置", "请先配置Gemini API密钥")
+                return
+                
+            # 重新应用配置确保labeler是最新的
+            self.apply_gemini_config(gemini_config)
+        else:  # Huggingface模型
+            # 获取当前选择的模型名称
+            model_id = self.model_combo.currentText()
+            model_short_name = model_id.split('/')[-1]
             
-        # 重新应用配置确保labeler是最新的
-        self.apply_gemini_config(gemini_config)
-            
-        # 禁用按钮避免重复点击
-        self.label_all_btn.setEnabled(False)
-        self.label_all_btn.setText("正在打标...")
+            # 如果是首次使用该模型，显示加载提示
+            if self.labeler.hf_model is None or self.labeler.hf_model.get("model_id") != model_id:
+                # 显示加载消息
+                msg = QMessageBox(self)
+                msg.setIcon(QMessageBox.Information)
+                msg.setText(f"正在加载模型 {model_short_name}，这可能需要几分钟时间...\n首次使用时需要下载模型（约2GB）")
+                msg.setWindowTitle("加载模型")
+                msg.show()
+                QApplication.processEvents()  # 确保UI能够更新
+                self.msg = msg  # 保存引用以便后续关闭
         
-        # 收集所有图像和对应的行号
+        # 收集需要标注的图像
         images_to_label = []
         for row in range(len(self.image_files)):
-            # 所有图像都进行标注，无论是否已经打过标
-            images_to_label.append((row, self.image_files[row]))
+            # 获取英文标签
+            en_label_item = self.table.item(row, 1)
             
-            # 禁用该行的打标按钮
-            label_button = self.table.cellWidget(row, 4)
-            if label_button:
-                label_button.setText("正在打标...")
-                label_button.setEnabled(False)
+            # 如果英文标签为空，则需要标注
+            if not en_label_item or not en_label_item.text():
+                images_to_label.append((row, self.image_files[row]))
+                
+                # 禁用该行的打标按钮
+                label_button = self.table.cellWidget(row, 4)
+                if label_button:
+                    label_button.setText("正在打标...")
+                    label_button.setEnabled(False)
         
         if not images_to_label:
-            self.label_all_btn.setText("一键打标")
-            self.label_all_btn.setEnabled(True)
-            QMessageBox.information(self, "提示", "没有图像可以打标")
+            QMessageBox.information(self, "提示", "所有图像已标注")
             return
+        
+        # 禁用一键打标按钮
+        self.label_all_btn.setEnabled(False)
         
         # 创建批量打标线程
         self.batch_labeling_thread = LabelingThread("", 0, self.labeler)
@@ -924,22 +1019,37 @@ class ImageLabelAssistant(QMainWindow):
         
         # 启动线程
         self.batch_labeling_thread.start()
+        
+        # 关闭加载提示（如果存在）
+        if hasattr(self, 'msg') and self.msg.isVisible():
+            self.msg.close()
     
-    def on_all_labeling_completed(self, labeled_count):
-        """所有打标完成后的回调"""
-        # 恢复一键打标按钮
-        self.label_all_btn.setText("一键打标")
+    def on_all_labeling_completed(self, success_count):
+        """所有标注完成时的处理"""
+        # 恢复按钮状态
+        model_name = self.model_combo.currentText()
+        self.label_all_btn.setText(f"一键打标 ({model_name})")
         self.label_all_btn.setEnabled(True)
         
-        # 修复可能有些按钮没有恢复的问题
+        # 检查所有行，确保所有翻译按钮和打标按钮都已启用
         for row in range(len(self.image_files)):
+            # 恢复翻译按钮
+            translate_button = self.table.cellWidget(row, 3)
+            if translate_button and not translate_button.isEnabled():
+                translate_button.setText("翻译")
+                translate_button.setEnabled(True)
+                
+            # 恢复打标按钮
             label_button = self.table.cellWidget(row, 4)
             if label_button and not label_button.isEnabled():
                 label_button.setText("打标")
                 label_button.setEnabled(True)
         
-        # 显示完成消息
-        QMessageBox.information(self, "打标完成", f"已成功打标 {labeled_count} 个图像")
+        # 根据是否有成功标注的图像显示不同消息
+        if success_count > 0:
+            QMessageBox.information(self, "标注完成", f"成功标注了 {success_count} 张图像")
+        else:
+            QMessageBox.information(self, "标注完成", "没有图像被成功标注")
     
     def save_all_labels(self):
         """保存所有标签到文本文件"""
@@ -975,6 +1085,35 @@ class ImageLabelAssistant(QMainWindow):
         """表格内容变化时的回调函数"""
         # 标记内容已被修改
         self.content_modified = True
+
+    def on_model_changed(self):
+        """模型选择变化时的回调函数"""
+        # 获取当前选择的模型索引和文本
+        current_index = self.model_combo.currentIndex()
+        selected_model = self.model_combo.currentText()
+        
+        # 更新label_all_btn的文本
+        # 如果是Gemini，显示完整名称；如果是其他模型，只显示最后部分名称
+        display_name = selected_model
+        if current_index > 0:  # 非Gemini模型
+            display_name = selected_model.split('/')[-1]  # 只显示模型名称部分
+        
+        self.label_all_btn.setText(f"一键打标 ({display_name})")
+        
+        # 如果是Gemini模型
+        if current_index == 0:
+            self.labeler.use_hf_model = False
+            self.labeler.hf_model_id = None
+        else:
+            # 如果是Huggingface模型，设置模型ID
+            self.labeler.use_hf_model = True
+            self.labeler.hf_model_id = selected_model
+            # 清空已加载的模型，以便重新加载所选模型
+            if self.labeler.hf_model is not None and self.labeler.hf_model.get("model_id") != selected_model:
+                self.labeler.hf_model = None
+                print(f"模型已更改为: {selected_model}")
+        
+        print(f"当前选择的模型: {selected_model}")
 
 def load_stylesheet():
     """加载QSS样式表"""
