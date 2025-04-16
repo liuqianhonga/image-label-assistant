@@ -2,6 +2,20 @@
 
 一个用于图像打标的工具，专为训练Lora模型设计。该工具可以使用Google Gemini API、智谱多模态API或本地Huggingface模型自动为图像生成英文标签，并提供中文翻译，方便用户理解和修改。
 
+## API注册
+
+在使用在线API服务前，您需要先注册相应平台并获取API密钥：
+
+### 1. Google Gemini API
+- 注册地址: [https://aistudio.google.com/](https://aistudio.google.com/)
+- 说明: 需要Google账号，注册后创建API密钥
+- 免费额度: 提供一定的免费调用额度
+
+### 2. 智谱AI API
+- 注册地址: [智谱GLM](https://www.bigmodel.cn/invite?icode=F7Kxw9I8kptfUQ%2FJjpH8s3HEaazDlIZGj9HxftzTbt4%3D)  
+- 说明: 需要手机号注册，完成实名认证
+- 免费额度: GLM-4-Flash-250414、GLM-4V-Flash提供免费调用额度
+
 ## 功能特点
 
 - 手动管理图像目录，添加和删除目录
