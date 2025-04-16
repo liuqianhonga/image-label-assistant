@@ -1,8 +1,0 @@
-PyQt5>=5.15.4
-Pillow>=9.0.0
-requests>=2.25.0
-google-generativeai>=0.8.0
-transformers>=4.38.0
-einops>=0.6.0
-timm>=0.9.0
-huggingface_hub>=0.20.0 

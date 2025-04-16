@@ -20,12 +20,34 @@
 
 1. 确保已安装Python 3.11或更高版本
 2. 克隆或下载本仓库
-3. 安装依赖包：
+3. 安装uv工具（如果尚未安装）：
 
 ```bash
-pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu126
+# 在Windows上
+curl -sSf https://astral.sh/uv/install.ps1 | powershell
+# 在Linux/macOS上
+curl -sSf https://astral.sh/uv/install.sh | sh
+```
 
-pip install -r requirements.txt
+4. 使用uv初始化和安装依赖：
+
+```bash
+# 创建并初始化虚拟环境
+uv venv
+# 激活虚拟环境（Windows）
+.\.venv\Scripts\activate
+# 激活虚拟环境（Linux/macOS）
+source .venv/bin/activate
+# 安装CUDA版本的PyTorch（推荐，支持GPU加速）
+uv pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu126
+# 安装其他依赖项
+uv pip install .
+```
+
+如果不需要GPU加速，可以直接使用：
+
+```bash
+uv pip install .
 ```
 
 ## 可用的图像打标模型
@@ -95,7 +117,9 @@ pip install -r requirements.txt
 运行主程序：
 
 ```bash
+
 python main.py
+
 ```
 
 ### 基本使用流程
