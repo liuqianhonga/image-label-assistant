@@ -1270,18 +1270,18 @@ class ImageLabelAssistant(QMainWindow):
         
         self.label_all_btn.setText(f"一键打标 ({display_name})")
         
-        # 如果是Gemini模型
-        if current_index == 0:
+        # 根据模型类型设置labeler配置
+        if current_index == 0:  # Gemini
             self.labeler.use_hf_model = False
             self.labeler.hf_model_id = None
-        elif selected_model in ["智谱GLM-4V-Flash", "智谱GLM-4V-Plus-0111"]:
-            # 智谱多模态模型
+            self.labeler.model_name = selected_model
+        elif selected_model in ["智谱GLM-4V-Flash", "智谱GLM-4V-Plus-0111"]:  # 智谱多模态
             self.labeler.use_hf_model = False
             self.labeler.model_name = "glm-4v-flash" if selected_model == "智谱GLM-4V-Flash" else "glm-4v-plus-0111"
-        else:
-            # Huggingface模型
+        else:  # Huggingface模型
             self.labeler.use_hf_model = True
             self.labeler.hf_model_id = selected_model
+            self.labeler.model_name = selected_model
             # 清空已加载的模型，以便重新加载所选模型
             if self.labeler.hf_model is not None and self.labeler.hf_model.get("model_id") != selected_model:
                 self.labeler.hf_model = None

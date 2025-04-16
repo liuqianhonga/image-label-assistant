@@ -2,6 +2,8 @@
 
 一个用于图像打标的工具，专为训练Lora模型设计。该工具可以使用Google Gemini API、智谱多模态API或本地Huggingface模型自动为图像生成英文标签，并提供中文翻译，方便用户理解和修改。
 
+![](./screenshot/screenshot.png)
+
 ## API注册
 
 在使用在线API服务前，您需要先注册相应平台并获取API密钥：
