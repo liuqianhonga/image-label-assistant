@@ -4,86 +4,49 @@ import json
 from PyQt5.QtWidgets import QApplication, QMainWindow, QSplitter, QListWidget, QTableWidget, QTableWidgetItem
 from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QLineEdit, QHeaderView, QFileDialog, QMessageBox
 from PyQt5.QtWidgets import QLabel, QStyledItemDelegate, QDesktopWidget, QTextEdit, QAbstractItemView, QDialog, QComboBox, QDoubleSpinBox, QSpinBox
+from PyQt5.QtWidgets import QTabWidget, QRadioButton, QButtonGroup, QGroupBox
 from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal
 from PyQt5.QtGui import QPixmap, QIcon
 from image_labeler import ImageLabeler
 from utils import translate_text
 import config
 
-# Gemini配置对话框
-class GeminiConfigDialog(QDialog):
-    def __init__(self, parent=None, current_config=None):
+# API配置对话框
+class APIConfigDialog(QDialog):
+    def __init__(self, parent=None, current_gemini_config=None, current_zhipu_translate_config=None, current_zhipu_label_config=None):
         super().__init__(parent)
-        self.setWindowTitle("Gemini API配置")
-        self.setMinimumWidth(500)
+        self.setWindowTitle("API配置")
+        self.setMinimumWidth(600)
         self.layout = QVBoxLayout(self)
         
         # 设置对话框居中显示
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)  # 移除帮助按钮
         
+        # 创建选项卡
+        self.tabs = QTabWidget()
+        self.gemini_tab = QWidget()
+        self.zhipu_tab = QWidget()
+        
+        self.tabs.addTab(self.gemini_tab, "Gemini配置")
+        self.tabs.addTab(self.zhipu_tab, "智谱AI配置")
+        
+        self.layout.addWidget(self.tabs)
+        
         # 如果没有提供当前配置，使用默认配置
-        if not current_config:
-            current_config = config.DEFAULT_GEMINI_CONFIG
+        if not current_gemini_config:
+            current_gemini_config = config.DEFAULT_GEMINI_CONFIG
+            
+        if not current_zhipu_translate_config:
+            current_zhipu_translate_config = config.get_zhipu_translate_config()
         
-        # API密钥
-        api_key_layout = QHBoxLayout()
-        api_key_label = QLabel("API密钥:")
-        self.api_key_input = QLineEdit()
-        self.api_key_input.setPlaceholderText("输入Google AI Studio API密钥")
-        if 'api_key' in current_config:
-            self.api_key_input.setText(current_config['api_key'])
-        api_key_layout.addWidget(api_key_label)
-        api_key_layout.addWidget(self.api_key_input)
-        self.layout.addLayout(api_key_layout)
+        if not current_zhipu_label_config: 
+            current_zhipu_label_config = config.get_zhipu_label_config()
+            
+        # 设置Gemini选项卡
+        self.setup_gemini_tab(current_gemini_config)
         
-        # 模型选择
-        model_layout = QHBoxLayout()
-        model_label = QLabel("模型:")
-        self.model_combo = QComboBox()
-        self.model_combo.addItems(config.GEMINI_MODELS)
-        if 'model' in current_config:
-            index = self.model_combo.findText(current_config['model'])
-            if index >= 0:
-                self.model_combo.setCurrentIndex(index)
-        model_layout.addWidget(model_label)
-        model_layout.addWidget(self.model_combo)
-        self.layout.addLayout(model_layout)
-        
-        # 温度设置
-        temp_layout = QHBoxLayout()
-        temp_label = QLabel("温度:")
-        self.temp_spin = QDoubleSpinBox()
-        self.temp_spin.setRange(0.0, 2.0)
-        self.temp_spin.setSingleStep(0.1)
-        self.temp_spin.setValue(current_config.get('temperature', 0.8))
-        temp_layout.addWidget(temp_label)
-        temp_layout.addWidget(self.temp_spin)
-        self.layout.addLayout(temp_layout)
-        
-        # 最大输出长度
-        max_tokens_layout = QHBoxLayout()
-        max_tokens_label = QLabel("最大输出长度:")
-        self.max_tokens_spin = QSpinBox()
-        self.max_tokens_spin.setRange(1, 8192)
-        self.max_tokens_spin.setSingleStep(100)
-        self.max_tokens_spin.setValue(current_config.get('max_output_tokens', 2048))
-        max_tokens_layout.addWidget(max_tokens_label)
-        max_tokens_layout.addWidget(self.max_tokens_spin)
-        self.layout.addLayout(max_tokens_layout)
-        
-        # 提示词
-        prompt_layout = QVBoxLayout()
-        prompt_label = QLabel("提示词:")
-        self.prompt_input = QTextEdit()
-        self.prompt_input.setPlaceholderText("输入提示词，指导模型生成描述")
-        if 'prompt' in current_config:
-            self.prompt_input.setText(current_config['prompt'])
-        else:
-            self.prompt_input.setText(config.DEFAULT_GEMINI_CONFIG['prompt'])
-        self.prompt_input.setMinimumHeight(100)
-        prompt_layout.addWidget(prompt_label)
-        prompt_layout.addWidget(self.prompt_input)
-        self.layout.addLayout(prompt_layout)
+        # 设置智谱AI选项卡
+        self.setup_zhipu_tab(current_zhipu_translate_config, current_zhipu_label_config)
         
         # 按钮
         buttons_layout = QHBoxLayout()
@@ -95,14 +58,210 @@ class GeminiConfigDialog(QDialog):
         buttons_layout.addWidget(self.save_btn)
         self.layout.addLayout(buttons_layout)
     
-    def get_config(self):
-        """获取当前配置"""
+    def setup_gemini_tab(self, current_config):
+        """设置Gemini选项卡"""
+        gemini_layout = QVBoxLayout(self.gemini_tab)
+        
+        # API密钥
+        api_key_layout = QHBoxLayout()
+        api_key_label = QLabel("API密钥:")
+        self.gemini_api_key_input = QLineEdit()
+        self.gemini_api_key_input.setPlaceholderText("输入Google AI Studio API密钥")
+        if 'api_key' in current_config:
+            self.gemini_api_key_input.setText(current_config['api_key'])
+        api_key_layout.addWidget(api_key_label)
+        api_key_layout.addWidget(self.gemini_api_key_input)
+        gemini_layout.addLayout(api_key_layout)
+        
+        # 模型选择
+        model_layout = QHBoxLayout()
+        model_label = QLabel("模型:")
+        self.gemini_model_combo = QComboBox()
+        self.gemini_model_combo.addItems(config.GEMINI_MODELS)
+        if 'model' in current_config:
+            index = self.gemini_model_combo.findText(current_config['model'])
+            if index >= 0:
+                self.gemini_model_combo.setCurrentIndex(index)
+        model_layout.addWidget(model_label)
+        model_layout.addWidget(self.gemini_model_combo)
+        gemini_layout.addLayout(model_layout)
+        
+        # 温度设置
+        temp_layout = QHBoxLayout()
+        temp_label = QLabel("温度:")
+        self.gemini_temp_spin = QDoubleSpinBox()
+        self.gemini_temp_spin.setRange(0.0, 2.0)
+        self.gemini_temp_spin.setSingleStep(0.1)
+        self.gemini_temp_spin.setValue(current_config.get('temperature', 0.8))
+        temp_layout.addWidget(temp_label)
+        temp_layout.addWidget(self.gemini_temp_spin)
+        gemini_layout.addLayout(temp_layout)
+        
+        # 最大输出长度
+        max_tokens_layout = QHBoxLayout()
+        max_tokens_label = QLabel("最大输出长度:")
+        self.gemini_max_tokens_spin = QSpinBox()
+        self.gemini_max_tokens_spin.setRange(1, 8192)
+        self.gemini_max_tokens_spin.setSingleStep(100)
+        self.gemini_max_tokens_spin.setValue(current_config.get('max_output_tokens', 2048))
+        max_tokens_layout.addWidget(max_tokens_label)
+        max_tokens_layout.addWidget(self.gemini_max_tokens_spin)
+        gemini_layout.addLayout(max_tokens_layout)
+        
+        # 提示词
+        prompt_layout = QVBoxLayout()
+        prompt_label = QLabel("提示词:")
+        self.gemini_prompt_input = QTextEdit()
+        self.gemini_prompt_input.setPlaceholderText("输入提示词，指导模型生成描述")
+        if 'prompt' in current_config:
+            self.gemini_prompt_input.setText(current_config['prompt'])
+        else:
+            self.gemini_prompt_input.setText(config.DEFAULT_GEMINI_CONFIG['prompt'])
+        self.gemini_prompt_input.setMinimumHeight(100)
+        prompt_layout.addWidget(prompt_label)
+        prompt_layout.addWidget(self.gemini_prompt_input)
+        gemini_layout.addLayout(prompt_layout)
+        
+    def setup_zhipu_tab(self, current_translate_config, current_label_config):
+        """设置智谱AI选项卡"""
+        zhipu_layout = QVBoxLayout(self.zhipu_tab)
+        
+        # API密钥
+        api_key_layout = QHBoxLayout()
+        api_key_label = QLabel("API密钥:")
+        self.zhipu_api_key_input = QLineEdit()
+        self.zhipu_api_key_input.setPlaceholderText("输入智谱GLM API密钥")
+        self.zhipu_api_key_input.setText(current_translate_config.get('api_key', ''))
+        api_key_layout.addWidget(api_key_label)
+        api_key_layout.addWidget(self.zhipu_api_key_input)
+        zhipu_layout.addLayout(api_key_layout)
+        
+        # 翻译配置区域
+        translate_group = QGroupBox("翻译配置")
+        translate_layout = QVBoxLayout(translate_group)
+        
+        # 模型选择
+        model_layout = QHBoxLayout()
+        model_label = QLabel("模型:")
+        self.zhipu_translate_model = QComboBox()
+        self.zhipu_translate_model.addItems(['glm-4-flash-250414', 'glm-4-flash'])
+        self.zhipu_translate_model.setCurrentText(current_translate_config.get('model', 'glm-4-flash-250414'))
+        model_layout.addWidget(model_label)
+        model_layout.addWidget(self.zhipu_translate_model)
+        translate_layout.addLayout(model_layout)
+        
+        # 温度设置
+        temp_layout = QHBoxLayout()
+        temp_label = QLabel("温度:")
+        self.zhipu_translate_temp = QDoubleSpinBox()
+        self.zhipu_translate_temp.setRange(0.0, 2.0)
+        self.zhipu_translate_temp.setSingleStep(0.1)
+        self.zhipu_translate_temp.setValue(current_translate_config.get('temperature', 0.7))
+        temp_layout.addWidget(temp_label)
+        temp_layout.addWidget(self.zhipu_translate_temp)
+        translate_layout.addLayout(temp_layout)
+        
+        # 最大输出长度
+        max_tokens_layout = QHBoxLayout()
+        max_tokens_label = QLabel("最大输出长度:")
+        self.zhipu_translate_max_tokens = QSpinBox()
+        self.zhipu_translate_max_tokens.setRange(10, 8192)
+        self.zhipu_translate_max_tokens.setSingleStep(100)
+        self.zhipu_translate_max_tokens.setValue(current_translate_config.get('max_tokens', 2048))
+        max_tokens_layout.addWidget(max_tokens_label)
+        max_tokens_layout.addWidget(self.zhipu_translate_max_tokens)
+        translate_layout.addLayout(max_tokens_layout)
+        
+        zhipu_layout.addWidget(translate_group)
+        
+        # 打标配置区域
+        label_group = QGroupBox("打标配置")
+        label_layout = QVBoxLayout(label_group)
+        
+        # 模型选择
+        model_layout = QHBoxLayout()
+        model_label = QLabel("模型:")
+        self.zhipu_label_model = QComboBox()
+        self.zhipu_label_model.addItems(['glm-4v-flash', 'glm-4v'])
+        self.zhipu_label_model.setCurrentText(current_label_config.get('model', 'glm-4v-flash'))
+        model_layout.addWidget(model_label)
+        model_layout.addWidget(self.zhipu_label_model)
+        label_layout.addLayout(model_layout)
+        
+        # 温度设置
+        temp_layout = QHBoxLayout()
+        temp_label = QLabel("温度:")
+        self.zhipu_label_temp = QDoubleSpinBox()
+        self.zhipu_label_temp.setRange(0.0, 2.0)
+        self.zhipu_label_temp.setSingleStep(0.1)
+        self.zhipu_label_temp.setValue(current_label_config.get('temperature', 0.7))
+        temp_layout.addWidget(temp_label)
+        temp_layout.addWidget(self.zhipu_label_temp)
+        label_layout.addLayout(temp_layout)
+        
+        # 最大输出长度
+        max_tokens_layout = QHBoxLayout()
+        max_tokens_label = QLabel("最大输出长度:")
+        self.zhipu_label_max_tokens = QSpinBox()
+        self.zhipu_label_max_tokens.setRange(10, 8192)
+        self.zhipu_label_max_tokens.setSingleStep(100)
+        self.zhipu_label_max_tokens.setValue(current_label_config.get('max_tokens', 2048))
+        max_tokens_layout.addWidget(max_tokens_label)
+        max_tokens_layout.addWidget(self.zhipu_label_max_tokens)
+        label_layout.addLayout(max_tokens_layout)
+        
+        zhipu_layout.addWidget(label_group)
+        
+        # 添加功能说明
+        features_group_box = QGroupBox("功能说明")
+        features_layout = QVBoxLayout(features_group_box)
+        
+        # 翻译功能说明
+        translate_label = QLabel("• 翻译：系统使用智谱AI进行高质量翻译，自动将英文标签翻译为中文。")
+        translate_label.setWordWrap(True)
+        features_layout.addWidget(translate_label)
+        
+        # 未来可能的功能说明
+        future_label = QLabel("• 其它：智谱AI还可用于多种自然语言处理任务，后续版本可能增加更多功能。")
+        future_label.setWordWrap(True)
+        features_layout.addWidget(future_label)
+        
+        zhipu_layout.addWidget(features_group_box)
+        
+        # 添加提示说明
+        note_label = QLabel("注意: 使用智谱AI需要在智谱AI官网注册并创建API密钥，详见 https://www.bigmodel.cn/")
+        note_label.setWordWrap(True)
+        zhipu_layout.addWidget(note_label)
+        
+        # 添加空白占位
+        zhipu_layout.addStretch()
+    
+    def get_gemini_config(self):
+        """获取Gemini配置"""
         return {
-            'api_key': self.api_key_input.text().strip(),
-            'model': self.model_combo.currentText(),
-            'temperature': self.temp_spin.value(),
-            'max_output_tokens': self.max_tokens_spin.value(),
-            'prompt': self.prompt_input.toPlainText().strip()
+            'api_key': self.gemini_api_key_input.text().strip(),
+            'model': self.gemini_model_combo.currentText(),
+            'temperature': self.gemini_temp_spin.value(),
+            'max_output_tokens': self.gemini_max_tokens_spin.value(),
+            'prompt': self.gemini_prompt_input.toPlainText().strip()
+        }
+    
+    def get_zhipu_translate_config(self):
+        """获取智谱AI翻译配置"""
+        return {
+            'api_key': self.zhipu_api_key_input.text().strip(),
+            'model': self.zhipu_translate_model.currentText(),
+            'temperature': self.zhipu_translate_temp.value(),
+            'max_tokens': self.zhipu_translate_max_tokens.value()
+        }
+        
+    def get_zhipu_label_config(self):
+        """获取智谱AI打标配置"""
+        return {
+            'api_key': self.zhipu_api_key_input.text().strip(),
+            'model': self.zhipu_label_model.currentText(),
+            'temperature': self.zhipu_label_temp.value(),
+            'max_tokens': self.zhipu_label_max_tokens.value()
         }
 
 # 创建翻译线程类
@@ -148,6 +307,7 @@ class TranslateThread(QThread):
             # 单个翻译模式
             try:
                 translated = translate_text(self.text)
+                print("KAI Shis SDFDS")
                 if translated.startswith("[翻译失败]"):
                     self.translation_failed.emit(self.row, translated)
                 else:
@@ -314,7 +474,7 @@ class ImageLabelAssistant(QMainWindow):
         if not gemini_config.get('api_key'):
             result = QMessageBox.question(
                 self, 
-                "Gemini配置", 
+                "API配置", 
                 "您尚未配置Gemini API，无法使用图像打标功能。\n\n是否现在配置？",
                 QMessageBox.Yes | QMessageBox.No
             )
@@ -322,7 +482,7 @@ class ImageLabelAssistant(QMainWindow):
             if result == QMessageBox.Yes:
                 self.show_gemini_config()
             else:
-                QMessageBox.information(self, "功能受限", "由于未配置Gemini API，打标功能将不可用。\n\n您随时可以通过左侧的'配置Gemini API'按钮进行配置。")
+                QMessageBox.information(self, "功能受限", "由于未配置Gemini API，打标功能将不可用。\n\n您随时可以通过左侧的'配置API'按钮进行配置。")
         
         # 为labeler应用配置
         self.apply_gemini_config(gemini_config)
@@ -377,7 +537,7 @@ class ImageLabelAssistant(QMainWindow):
         left_layout.addWidget(self.remove_btn)
         
         # 添加Gemini配置按钮
-        self.gemini_config_btn = QPushButton("配置Gemini API")
+        self.gemini_config_btn = QPushButton("配置API")
         self.gemini_config_btn.clicked.connect(self.show_gemini_config)
         left_layout.addWidget(self.gemini_config_btn)
         
@@ -401,7 +561,9 @@ class ImageLabelAssistant(QMainWindow):
                                   "microsoft/Florence-2-large-ft", 
                                   "microsoft/Florence-2-base-ft", 
                                   "microsoft/Florence-2-large", 
-                                  "microsoft/Florence-2-base"])
+                                  "microsoft/Florence-2-base",
+                                  "智谱GLM-4V-Flash",
+                                  "智谱GLM-4V-Plus-0111"])
         self.model_combo.setCurrentIndex(1)  # 默认使用第一个Florence模型
         self.model_combo.currentIndexChanged.connect(self.on_model_changed)
         model_selection_layout.addWidget(self.model_combo)
@@ -465,12 +627,19 @@ class ImageLabelAssistant(QMainWindow):
         main_splitter.setSizes([300, 900])
         
     def show_gemini_config(self):
-        """显示Gemini配置对话框"""
+        """显示API配置对话框"""
         # 获取当前配置
-        current_config = config.get_gemini_config()
+        current_gemini_config = config.get_gemini_config()
+        current_zhipu_translate_config = config.get_zhipu_translate_config()
+        current_zhipu_label_config = config.get_zhipu_label_config()
         
         # 创建并显示配置对话框
-        config_dialog = GeminiConfigDialog(self, current_config)
+        config_dialog = APIConfigDialog(
+            self, 
+            current_gemini_config, 
+            current_zhipu_translate_config, 
+            current_zhipu_label_config
+        )
         
         # 将对话框移动到屏幕中央
         screen_rect = QDesktopWidget().availableGeometry()
@@ -480,19 +649,18 @@ class ImageLabelAssistant(QMainWindow):
         
         if config_dialog.exec_() == QDialog.Accepted:
             # 获取新配置
-            new_config = config_dialog.get_config()
+            new_gemini_config = config_dialog.get_gemini_config()
+            new_zhipu_translate_config = config_dialog.get_zhipu_translate_config()
+            new_zhipu_label_config = config_dialog.get_zhipu_label_config()
             
             # 应用配置
-            self.apply_gemini_config(new_config)
-            
-            # 保存配置
-            config.save_gemini_config(new_config)
+            self.apply_gemini_config(new_gemini_config)
+            config.save_gemini_config(new_gemini_config)
+            config.save_zhipu_translate_config(new_zhipu_translate_config)
+            config.save_zhipu_label_config(new_zhipu_label_config)
             
             # 显示确认消息
-            if new_config['api_key']:
-                QMessageBox.information(self, "配置成功", "Gemini API配置已保存")
-            else:
-                QMessageBox.warning(self, "API密钥为空", "请注意，没有设置Gemini API密钥，图像打标功能将无法使用")
+            QMessageBox.information(self, "配置成功", "API配置已保存")
     
     def apply_gemini_config(self, config_data):
         """应用Gemini配置"""
@@ -1093,10 +1261,12 @@ class ImageLabelAssistant(QMainWindow):
         selected_model = self.model_combo.currentText()
         
         # 更新label_all_btn的文本
-        # 如果是Gemini，显示完整名称；如果是其他模型，只显示最后部分名称
         display_name = selected_model
         if current_index > 0:  # 非Gemini模型
-            display_name = selected_model.split('/')[-1]  # 只显示模型名称部分
+            if selected_model in ["智谱GLM-4V-Flash", "智谱GLM-4V-Plus-0111"]:
+                display_name = selected_model
+            else:
+                display_name = selected_model.split('/')[-1]  # 只显示模型名称部分
         
         self.label_all_btn.setText(f"一键打标 ({display_name})")
         
@@ -1104,14 +1274,17 @@ class ImageLabelAssistant(QMainWindow):
         if current_index == 0:
             self.labeler.use_hf_model = False
             self.labeler.hf_model_id = None
+        elif selected_model in ["智谱GLM-4V-Flash", "智谱GLM-4V-Plus-0111"]:
+            # 智谱多模态模型
+            self.labeler.use_hf_model = False
+            self.labeler.model_name = "glm-4v-flash" if selected_model == "智谱GLM-4V-Flash" else "glm-4v-plus-0111"
         else:
-            # 如果是Huggingface模型，设置模型ID
+            # Huggingface模型
             self.labeler.use_hf_model = True
             self.labeler.hf_model_id = selected_model
             # 清空已加载的模型，以便重新加载所选模型
             if self.labeler.hf_model is not None and self.labeler.hf_model.get("model_id") != selected_model:
                 self.labeler.hf_model = None
-                print(f"模型已更改为: {selected_model}")
         
         print(f"当前选择的模型: {selected_model}")
 
@@ -1132,4 +1305,4 @@ if __name__ == "__main__":
     
     window = ImageLabelAssistant()
     window.show()
-    sys.exit(app.exec_()) 
+    sys.exit(app.exec_())

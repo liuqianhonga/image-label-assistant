@@ -11,6 +11,8 @@ import torch
 from transformers import AutoModelForCausalLM, AutoProcessor
 from huggingface_hub import snapshot_download
 import shutil
+import config
+from zhipuai import ZhipuAI
 
 class ImageLabeler:
     """图像标注类，用于处理图像识别和标注"""
@@ -51,17 +53,14 @@ class ImageLabeler:
     def label_image(self, image_path):
         """
         对图片进行标注，返回英文描述
-        根据配置使用Gemini或Huggingface模型
+        根据配置使用Gemini、Huggingface或智谱多模态模型
         """
-        # 输出当前使用的模型信息
-        if self.use_hf_model:
-            print(f"使用Huggingface模型: {self.hf_model_id}")
-        else:
-            print(f"使用Gemini模型: {self.model_name}")
-            
         # 判断使用哪个模型
-        if self.use_hf_model:
-            # 使用Huggingface模型
+        if self.model_name in ['glm-4v-flash', 'glm-4v']:
+            print(f"使用智谱多模态模型: {self.model_name}")
+            return self.label_with_zhipu_v_model(image_path)
+        elif self.use_hf_model:
+            print(f"使用Huggingface模型: {self.hf_model_id}")
             try:
                 return self.label_with_hf_model(image_path)
             except Exception as e:
@@ -173,6 +172,85 @@ class ImageLabeler:
             # 如果下载失败，返回原始model_id，让transformers自行处理
             return model_id
     
+    def label_with_zhipu_v_model(self, image_path):
+        """使用智谱多模态模型对图片进行标注"""
+        try:
+            # 获取智谱AI配置
+            zhipu_config = config.get_zhipu_label_config()
+            api_key = zhipu_config.get('api_key', '')
+            model = zhipu_config.get('model', 'glm-4v-flash')
+            temperature = zhipu_config.get('temperature', 0.7)
+            max_tokens = zhipu_config.get('max_tokens', 2048)
+            
+            if not api_key:
+                return {"description": "[调用失败] 智谱AI API密钥未配置", "zh": ""}
+            
+            # 读取图像并转换为base64
+            with open(image_path, "rb") as image_file:
+                base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+            
+            # 构建提示词
+            prompt = f"""请详细描述这张图片的内容，包括：
+1. 主要对象和动作
+2. 场景和氛围
+3. 艺术风格
+4. 服装和外观
+5. 构图和视角
+6. 光线和色彩
+7. 细节和纹理
+
+使用以下JSON格式返回结果：
+{{
+  "description": "英文描述",
+  "zh": "中文描述"
+}}"""
+            
+            # 初始化客户端
+            client = ZhipuAI(api_key=api_key)
+            
+            # 构建消息
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                    ]
+                }
+            ]
+            
+            # 调用API
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            
+            # 处理响应
+            if response and hasattr(response, 'choices') and len(response.choices) > 0:
+                result_text = response.choices[0].message.content.strip()
+                
+                # 尝试解析JSON
+                try:
+                    result = json.loads(result_text)
+                    if 'description' in result:
+                        return result
+                except json.JSONDecodeError:
+                    pass
+                
+                # 如果无法解析为JSON，返回原始文本
+                return {"description": result_text, "zh": ""}
+            else:
+                return {"description": f"[调用失败] 响应格式错误: {response}", "zh": ""}
+                
+        except Exception as e:
+            error_message = f"使用智谱多模态模型标注图像时出错: {str(e)}"
+            print(error_message)
+            import traceback
+            traceback.print_exc()
+            return {"description": error_message, "zh": ""}
+
     def label_with_hf_model(self, image_path):
         """使用huggingface模型在本地对图片进行标注"""
         
@@ -295,4 +373,4 @@ class ImageLabeler:
             print(error_message)
             import traceback
             traceback.print_exc()
-            raise Exception(error_message) 
+            raise Exception(error_message)
