@@ -386,13 +386,16 @@ class LabelingThread(QThread):
     labeling_failed = pyqtSignal(int, str)
     all_labeling_completed = pyqtSignal(int)  # 新增信号，参数为成功打标的数量
     
-    def __init__(self, image_path, row, labeler):
+    def __init__(self, image_path, row, labeler, current_directory=None):
         super().__init__()
         self.image_path = image_path
         self.row = row
         
         # 确保复制labeler的配置，而不是直接引用
         self.labeler = labeler
+        
+        # 添加当前目录路径
+        self.current_directory = current_directory
         
         self.batch_mode = False
         self.image_paths = []  # [(row, image_path), ...]
@@ -408,17 +411,19 @@ class LabelingThread(QThread):
             labeled_count = 0
             for row, image_path in self.image_paths:
                 try:
-                    # 调用打标器进行打标
-                    result = self.labeler.label_image(image_path, self.current_path)
+                    # 调用打标器进行打标，传入当前目录参数
+                    result = self.labeler.label_image(image_path, self.current_directory)
                     
                     # 检查返回结果
                     if isinstance(result, dict) and 'description' in result:
                         self.labeling_done.emit(row, result)
                         labeled_count += 1
                     else:
-                        self.labeling_failed.emit(row, f"打标失败: 返回结果格式不正确")
+                        error_msg = f"打标失败: 返回结果格式不正确"
+                        self.labeling_failed.emit(row, error_msg)
                 except Exception as e:
-                    self.labeling_failed.emit(row, f"打标失败: {str(e)}")
+                    error_msg = f"打标失败: {str(e)}"
+                    self.labeling_failed.emit(row, error_msg)
                 
                 # 暂停1秒，避免API请求过于频繁
                 QThread.sleep(1)  # 增加到1秒
@@ -428,16 +433,18 @@ class LabelingThread(QThread):
         else:
             # 单个打标模式
             try:
-                # 调用打标器进行打标
-                result = self.labeler.label_image(self.image_path, self.current_path)
+                # 调用打标器进行打标，传入当前目录参数
+                result = self.labeler.label_image(self.image_path, self.current_directory)
                 
                 # 检查返回结果
                 if isinstance(result, dict) and 'description' in result:
                     self.labeling_done.emit(self.row, result)
                 else:
-                    self.labeling_failed.emit(self.row, f"打标失败: 返回结果格式不正确")
+                    error_msg = f"打标失败: 返回结果格式不正确"
+                    self.labeling_failed.emit(self.row, error_msg)
             except Exception as e:
-                self.labeling_failed.emit(self.row, f"打标失败: {str(e)}")
+                error_msg = f"打标失败: {str(e)}"
+                self.labeling_failed.emit(self.row, error_msg)
 
 class ImageLabelAssistant(QMainWindow):
     def __init__(self):
@@ -910,15 +917,8 @@ class ImageLabelAssistant(QMainWindow):
     
     def label_image(self, row):
         """标注单个图像"""
-        # 检查是否使用Gemini并确保API配置
-        if self.model_combo.currentIndex() == 0:  # Gemini
-            # 检查API配置
-            gemini_config = config.get_gemini_config()
-            if not gemini_config.get('api_key'):
-                QMessageBox.warning(self, "API密钥未配置", "请先配置Gemini API密钥")
-                return
-                
-        else:  # Huggingface模型
+        # 如果使用非Gemini和非智谱AI的模型，显示加载提示
+        if self.model_combo.currentIndex() > 0 and self.model_combo.currentText() != "智谱AI":  # Huggingface模型
             # 获取当前选择的模型名称
             model_id = self.model_combo.currentText()
             model_short_name = model_id.split('/')[-1]
@@ -946,8 +946,8 @@ class ImageLabelAssistant(QMainWindow):
         if translate_button:
             translate_button.setEnabled(False)
         
-        # 创建并启动打标线程
-        self.labeling_thread = LabelingThread(image_path, row, self.labeler)
+        # 创建并启动打标线程，传入当前目录
+        self.labeling_thread = LabelingThread(image_path, row, self.labeler, self.current_path)
         self.labeling_thread.labeling_done.connect(self.on_labeling_done)
         self.labeling_thread.labeling_failed.connect(self.on_labeling_failed)
         self.labeling_thread.start()
@@ -1157,15 +1157,8 @@ class ImageLabelAssistant(QMainWindow):
         if result != QMessageBox.Yes:
             return
             
-        # 如果使用Gemini模型，检查API配置
-        if self.model_combo.currentIndex() == 0:  # Gemini
-            # 检查API配置
-            gemini_config = config.get_gemini_config()
-            if not gemini_config.get('api_key'):
-                QMessageBox.warning(self, "API密钥未配置", "请先配置Gemini API密钥")
-                return
-                
-        else:  # Huggingface模型
+        # 如果使用非Gemini和非智谱AI的模型，显示加载提示
+        if self.model_combo.currentIndex() > 0 and self.model_combo.currentText() != "智谱AI":  # Huggingface模型
             # 获取当前选择的模型名称
             model_id = self.model_combo.currentText()
             model_short_name = model_id.split('/')[-1]
@@ -1204,8 +1197,8 @@ class ImageLabelAssistant(QMainWindow):
         # 禁用一键打标按钮
         self.label_all_btn.setEnabled(False)
         
-        # 创建批量打标线程
-        self.batch_labeling_thread = LabelingThread("", 0, self.labeler)
+        # 创建批量打标线程，传入当前目录
+        self.batch_labeling_thread = LabelingThread("", 0, self.labeler, self.current_path)
         self.batch_labeling_thread.set_batch_mode(images_to_label)
         
         # 连接信号

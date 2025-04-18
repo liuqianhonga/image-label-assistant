@@ -13,7 +13,7 @@ from huggingface_hub import snapshot_download
 import shutil
 import config
 from zhipuai import ZhipuAI
-from config import DEFAULT_ZHIPU_PROMPT
+
 
 class ImageLabeler:
     """图像标注类，用于处理图像识别和标注"""
@@ -58,7 +58,7 @@ class ImageLabeler:
         elif self.labeler_type == "zhipu":
             # 从配置中获取具体的模型名称
             zhipu_config = config.get_zhipu_label_config()
-            model = zhipu_config.get('model', 'glm-4v-flash')
+            model = zhipu_config.get('model', 'glm-4v-plus-0111')
             print(f"使用智谱打标服务: {model}")
             return self.label_with_zhipu_v_model(image_path, current_directory)
         
@@ -206,12 +206,13 @@ class ImageLabeler:
             # 获取智谱AI配置
             zhipu_config = config.get_zhipu_label_config()
             api_key = zhipu_config.get('api_key', '')
-            model = zhipu_config.get('model', 'glm-4v-flash')
+            model = zhipu_config.get('model', 'glm-4v-plus-0111')
             temperature = zhipu_config.get('temperature', 0.7)
             max_tokens = zhipu_config.get('max_tokens', 2048)
             
             # 获取目录特定的提示词
-            prompt = DEFAULT_ZHIPU_PROMPT
+            # 使用与Gemini相同的默认提示词
+            prompt = DEFAULT_PROMPT
             if current_directory:
                 dir_prompts = config.get_directory_prompts()
                 if current_directory in dir_prompts:

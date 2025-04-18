@@ -24,23 +24,6 @@ Your response should focus on:
 
 Return only the JSON object with these two fields."""
 
-# 智谱模型默认打标提示词
-DEFAULT_ZHIPU_PROMPT = """请详细描述这张图片的内容，包括：
-1. 主要对象和动作
-2. 场景和氛围
-3. 艺术风格
-4. 服装和外观
-5. 构图和视角
-6. 光线和色彩
-7. 细节和纹理
-
-请直接返回纯文本格式的JSON对象，不要使用Markdown代码块或其他格式化输出。只返回下面的JSON对象：
-
-{
-  "description": "英文描述",
-  "zh": "中文描述"
-}"""
-
 # Gemini相关默认配置
 DEFAULT_GEMINI_CONFIG = {
     'api_key': '',
@@ -60,7 +43,7 @@ DEFAULT_ZHIPU_TRANSLATE_CONFIG = {
 # 默认智谱AI打标配置
 DEFAULT_ZHIPU_LABEL_CONFIG = {
     'api_key': '',
-    'model': 'glm-4v-flash',  # 多模态打标模型，可选 glm-4v-flash 和 glm-4v-plus-0111（收费）
+    'model': 'glm-4v-plus-0111',  # 多模态打标模型，仅支持 glm-4v-plus-0111（收费）
     'temperature': 0.7,
     'max_tokens': 2048
 }
@@ -75,7 +58,7 @@ GEMINI_MODELS = [
 
 # 可用的GLM模型列表 - 分别用于翻译和打标
 GLM_TRANSLATE_MODELS = ['glm-4-flash-250414']
-GLM_LABEL_MODELS = ['glm-4v-flash', 'glm-4v-plus-0111']
+GLM_LABEL_MODELS = ['glm-4v-plus-0111']
 
 def load_config():
     """加载配置文件"""
