@@ -310,7 +310,6 @@ class TranslateThread(QThread):
             # 单个翻译模式
             try:
                 translated = translate_text(self.text)
-                print("KAI Shis SDFDS")
                 if translated.startswith("[翻译失败]"):
                     self.translation_failed.emit(self.row, translated)
                 else:
@@ -341,30 +340,31 @@ class TextEditDelegate(QStyledItemDelegate):
 class ImageDelegate(QStyledItemDelegate):
     """自定义委托，用于在表格中显示自适应大小的图片"""
     
-    def __init__(self):
-        super().__init__()
-        
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent_widget = parent  # 允许访问主窗口方法
+
     def paint(self, painter, option, index):
         if index.data(Qt.UserRole):
             image_path = index.data(Qt.UserRole)
-            # 根据单元格大小调整图片大小
-            cell_width = option.rect.width() - 10  # 留一些边距
+            # 先从缓存获取原始缩略图（100x100），再根据单元格实际大小缩放显示
+            if self.parent_widget and hasattr(self.parent_widget, 'get_thumbnail'):
+                base_thumbnail = self.parent_widget.get_thumbnail(image_path)
+            else:
+                base_thumbnail = QPixmap(image_path).scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            # 跟随单元格大小等比例缩放
+            cell_width = option.rect.width() - 10  # 保持原有边距
             cell_height = option.rect.height() - 10
-            
-            image = QPixmap(image_path)
-            # 保持宽高比例缩放
-            scaled_image = image.scaled(
-                cell_width, 
+            scaled_image = base_thumbnail.scaled(
+                cell_width,
                 cell_height,
-                Qt.KeepAspectRatio, 
+                Qt.KeepAspectRatio,
                 Qt.SmoothTransformation
             )
-            
             # 绘制图片，在单元格中居中
             x = option.rect.x() + (option.rect.width() - scaled_image.width()) / 2
             y = option.rect.y() + (option.rect.height() - scaled_image.height()) / 2
             painter.drawPixmap(int(x), int(y), scaled_image)
-            
             # 在图片下方绘制文件名
             file_name = os.path.basename(image_path)
             painter.drawText(
@@ -449,6 +449,7 @@ class LabelingThread(QThread):
 class ImageLabelAssistant(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.thumbnail_cache = {}  # 缩略图缓存
         self.init_ui()
         self.current_path = ""
         self.image_files = []
@@ -499,30 +500,27 @@ class ImageLabelAssistant(QMainWindow):
         # 添加目录的输入框和按钮
         input_layout = QHBoxLayout()
         self.dir_input = QLineEdit()
-        self.dir_input.setPlaceholderText("输入目录路径或点击选择按钮")
+        self.dir_input.setPlaceholderText("点击选择按钮添加数据集目录")
         self.browse_btn = QPushButton("选择")
         self.browse_btn.clicked.connect(self.browse_directory)
-        self.add_btn = QPushButton("添加")
-        self.add_btn.clicked.connect(self.add_directory)
         
         input_layout.addWidget(self.dir_input)
         input_layout.addWidget(self.browse_btn)
-        input_layout.addWidget(self.add_btn)
         
         left_layout.addLayout(input_layout)
         
-        # 目录列表
+        # 数据集列表
         self.dir_list = QListWidget()
         self.dir_list.clicked.connect(self.on_directory_clicked)
         left_layout.addWidget(self.dir_list)
         
-        # 为当前选中目录添加提示词配置区域
-        prompt_group = QGroupBox("当前目录提示词配置")
+        # 为当前选中数据集添加提示词配置区域
+        prompt_group = QGroupBox("当前数据集提示词配置")
         prompt_layout = QVBoxLayout(prompt_group)
 
         # 提示词输入框
         self.prompt_input = QTextEdit()
-        self.prompt_input.setPlaceholderText("输入当前目录的提示词配置")
+        self.prompt_input.setPlaceholderText("输入当前数据集的提示词配置")
         self.prompt_input.setMinimumHeight(100)
         prompt_layout.addWidget(self.prompt_input)
 
@@ -575,6 +573,7 @@ class ImageLabelAssistant(QMainWindow):
         trigger_label = QLabel("触发词:")
         self.trigger_input = QLineEdit()
         self.trigger_input.setPlaceholderText("输入触发词，将添加到标签前面")
+        self.trigger_input.setMinimumWidth(200)
         
         # 按钮
         selected_model = self.model_combo.currentText()  # 获取当前选择的模型名称
@@ -609,7 +608,7 @@ class ImageLabelAssistant(QMainWindow):
         self.table.itemChanged.connect(self.on_table_item_changed)
         
         # 设置委托
-        self.image_delegate = ImageDelegate()
+        self.image_delegate = ImageDelegate(self)
         self.table.setItemDelegateForColumn(0, self.image_delegate)
         
         # 设置文本编辑委托，仅英文打标使用多行编辑
@@ -733,30 +732,6 @@ class ImageLabelAssistant(QMainWindow):
             
             # 自动加载所选目录的图像
             self.on_directory_clicked(None)
-    
-    def add_directory(self):
-        """添加目录到列表"""
-        directory = self.dir_input.text().strip()
-        if not directory:
-            QMessageBox.warning(self, "警告", "请输入或选择目录路径")
-            return
-            
-        if not os.path.isdir(directory):
-            QMessageBox.warning(self, "警告", "所选路径不是有效的目录")
-            return
-            
-        # 检查是否已存在
-        for i in range(self.dir_list.count()):
-            if self.dir_list.item(i).text() == directory:
-                QMessageBox.information(self, "提示", "该目录已在列表中")
-                return
-                
-        # 添加到列表
-        self.dir_list.addItem(directory)
-        self.dir_input.clear()
-        
-        # 保存目录列表到配置模块
-        self.save_data()
     
     def remove_directory(self):
         """从列表中删除选中的目录"""
@@ -1346,6 +1321,22 @@ class ImageLabelAssistant(QMainWindow):
                 self.labeler.hf_model = None
         
         print(f"当前选择的模型: {selected_model}")
+
+    def get_thumbnail(self, image_path):
+        # 缓存大尺寸缩略图，避免放大导致模糊
+        max_thumb_size = 400
+        if image_path in self.thumbnail_cache:
+            return self.thumbnail_cache[image_path]
+        pixmap = QPixmap(image_path)
+        # 只缩小，不放大
+        if pixmap.width() > max_thumb_size or pixmap.height() > max_thumb_size:
+            thumbnail = pixmap.scaled(
+                max_thumb_size, max_thumb_size, Qt.KeepAspectRatio, Qt.SmoothTransformation
+            )
+        else:
+            thumbnail = pixmap
+        self.thumbnail_cache[image_path] = thumbnail
+        return thumbnail
 
 def load_stylesheet():
     """加载QSS样式表"""
