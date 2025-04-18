@@ -4,13 +4,8 @@ import json
 # 定义保存配置的JSON文件路径
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data.json')
 
-# Gemini相关默认配置
-DEFAULT_GEMINI_CONFIG = {
-    'api_key': '',
-    'model': 'gemini-2.0-flash-exp',
-    'temperature': 0.8,
-    'max_output_tokens': 2048,
-    'prompt': """Describe this image in detail for AI image generation. Focus on visual elements, style, composition, and important details.
+# 默认打标提示词配置
+DEFAULT_PROMPT = """Describe this image in detail for AI image generation. Focus on visual elements, style, composition, and important details.
 
 Use this JSON schema:
 {
@@ -28,6 +23,30 @@ Your response should focus on:
 7. Details and textures
 
 Return only the JSON object with these two fields."""
+
+# 智谱模型默认打标提示词
+DEFAULT_ZHIPU_PROMPT = """请详细描述这张图片的内容，包括：
+1. 主要对象和动作
+2. 场景和氛围
+3. 艺术风格
+4. 服装和外观
+5. 构图和视角
+6. 光线和色彩
+7. 细节和纹理
+
+请直接返回纯文本格式的JSON对象，不要使用Markdown代码块或其他格式化输出。只返回下面的JSON对象：
+
+{
+  "description": "英文描述",
+  "zh": "中文描述"
+}"""
+
+# Gemini相关默认配置
+DEFAULT_GEMINI_CONFIG = {
+    'api_key': '',
+    'model': 'gemini-2.0-flash-exp',
+    'temperature': 0.8,
+    'max_output_tokens': 2048
 }
 
 # 默认智谱AI翻译配置
@@ -41,7 +60,7 @@ DEFAULT_ZHIPU_TRANSLATE_CONFIG = {
 # 默认智谱AI打标配置
 DEFAULT_ZHIPU_LABEL_CONFIG = {
     'api_key': '',
-    'model': 'glm-4v-flash',  # 多模态打标模型
+    'model': 'glm-4v-flash',  # 多模态打标模型，可选 glm-4v-flash 和 glm-4v-plus-0111（收费）
     'temperature': 0.7,
     'max_tokens': 2048
 }
@@ -54,8 +73,9 @@ GEMINI_MODELS = [
     "gemini-1.5-pro"
 ]
 
-# 可用的GLM模型列表
-GLM_MODELS = ['glm-4-flash-250414', 'glm-4v-flash', 'glm-4v-plus-0111']
+# 可用的GLM模型列表 - 分别用于翻译和打标
+GLM_TRANSLATE_MODELS = ['glm-4-flash-250414']
+GLM_LABEL_MODELS = ['glm-4v-flash', 'glm-4v-plus-0111']
 
 def load_config():
     """加载配置文件"""
@@ -119,14 +139,65 @@ def save_zhipu_label_config(config_data):
     return save_config(config)
 
 def update_directories(directories):
-    """更新目录列表"""
+    """
+    更新目录列表（支持带 prompt 字段）
+    兼容字符串列表和 dict 列表
+    """
     config = load_config()
-    config['directories'] = directories
+    # 自动升级为 dict 格式
+    dirs = []
+    for d in directories:
+        if isinstance(d, str):
+            dirs.append({"path": d, "prompt": DEFAULT_PROMPT})
+        elif isinstance(d, dict):
+            # 兼容无 prompt 字段
+            if 'prompt' not in d:
+                d['prompt'] = DEFAULT_PROMPT
+            dirs.append(d)
+    config['directories'] = dirs
     return save_config(config)
 
 def get_directories():
-    """获取目录列表"""
+    """
+    获取目录列表，返回 [{"path":..., "prompt":...}]，兼容老格式
+    """
     config = load_config()
-    if 'directories' in config:
-        return config['directories']
-    return []
+    dirs = config.get('directories', [])
+    # 兼容老格式（字符串列表）
+    if dirs and isinstance(dirs[0], str):
+        dirs = [{"path": d, "prompt": DEFAULT_PROMPT} for d in dirs]
+        config['directories'] = dirs
+        save_config(config)
+    # 兼容无 prompt 字段
+    for d in dirs:
+        if 'prompt' not in d:
+            d['prompt'] = DEFAULT_PROMPT
+    return dirs
+
+def get_directory_prompts():
+    """
+    获取所有目录的 prompt 映射 {path: prompt}
+    """
+    return {d['path']: d.get('prompt', DEFAULT_PROMPT) for d in get_directories()}
+
+def set_directory_prompt(path, prompt):
+    """
+    设置某个目录的 prompt
+    """
+    dirs = get_directories()
+    updated = False
+    for d in dirs:
+        if d['path'] == path:
+            d['prompt'] = prompt
+            updated = True
+            break
+    if updated:
+        update_directories(dirs)
+    return updated
+
+def update_directories_with_prompts(dirs_with_prompts):
+    """
+    批量更新目录及其 prompt，参数为 [{path, prompt}]
+    """
+    update_directories(dirs_with_prompts)
+    return True

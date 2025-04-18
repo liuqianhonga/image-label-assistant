@@ -6,13 +6,14 @@ import base64
 import json
 import time
 import google.generativeai as genai
-from config import DEFAULT_GEMINI_CONFIG, GEMINI_MODELS
+from config import DEFAULT_GEMINI_CONFIG, GEMINI_MODELS, DEFAULT_PROMPT
 import torch
 from transformers import AutoModelForCausalLM, AutoProcessor
 from huggingface_hub import snapshot_download
 import shutil
 import config
 from zhipuai import ZhipuAI
+from config import DEFAULT_ZHIPU_PROMPT
 
 class ImageLabeler:
     """图像标注类，用于处理图像识别和标注"""
@@ -21,46 +22,49 @@ class ImageLabeler:
     GEMINI_MODELS = GEMINI_MODELS
     
     def __init__(self):
-        # Gemini相关配置
-        self.api_key = DEFAULT_GEMINI_CONFIG['api_key']
-        self.model_name = DEFAULT_GEMINI_CONFIG['model']
-        self.gemini_model = None
-        self.temperature = DEFAULT_GEMINI_CONFIG['temperature']
-        self.max_output_tokens = DEFAULT_GEMINI_CONFIG['max_output_tokens']
-        self.prompt = DEFAULT_GEMINI_CONFIG['prompt']
+        # 打标服务类型："gemini", "zhipu", "huggingface"
+        self.labeler_type = "huggingface"  # 默认使用huggingface模型
+        
+        # 模型实例缓存
+        self.gemini_model = None  # Gemini模型实例
+        self.hf_model = None      # Huggingface模型实例
+        
+        # 我们不再在实例中存储提示词，而是在打标时实时获取
         
         # Huggingface模型相关配置
-        self.hf_model = None
         self.hf_model_id = "MiaoshouAI/Florence-2-large-PromptGen-v2.0"  # 默认模型ID
-        self.use_hf_model = False  # 默认不使用Huggingface模型
         
         # 创建models目录
         self.models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
         os.makedirs(self.models_dir, exist_ok=True)
         
-    def configure_gemini(self, api_key, model_name="gemini-2.0-flash-exp", temperature=0.8, max_output_tokens=2048, prompt=None):
-        """配置Gemini API"""
-        self.api_key = api_key
-        self.model_name = model_name
-        self.temperature = temperature
-        self.max_output_tokens = max_output_tokens
-        if prompt:
-            self.prompt = prompt
-            
-        # 重置模型实例
-        self.gemini_model = None
+    # set_prompt方法已移除，因为我们现在在打标时实时获取提示词
         
-    def label_image(self, image_path):
+    def label_image(self, image_path, current_directory=None):
         """
         对图片进行标注，返回英文描述
-        根据配置使用Gemini、Huggingface或智谱多模态模型
+        根据 labeler_type 字段判断使用打标服务类型："gemini", "zhipu", "huggingface"
+        
+        参数：
+            image_path: 图片路径
+            current_directory: 当前目录路径，用于获取目录特定的提示词
         """
-        # 判断使用哪个模型
-        if self.model_name in ['glm-4v-flash', 'glm-4v']:
-            print(f"使用智谱多模态模型: {self.model_name}")
-            return self.label_with_zhipu_v_model(image_path)
-        elif self.use_hf_model:
-            print(f"使用Huggingface模型: {self.hf_model_id}")
+        # 1. 使用Gemini打标服务
+        if self.labeler_type == "gemini":
+            print("使用Gemini打标服务")
+            return self.label_with_gemini(image_path, current_directory)
+        
+        # 2. 使用智谱打标服务
+        elif self.labeler_type == "zhipu":
+            # 从配置中获取具体的模型名称
+            zhipu_config = config.get_zhipu_label_config()
+            model = zhipu_config.get('model', 'glm-4v-flash')
+            print(f"使用智谱打标服务: {model}")
+            return self.label_with_zhipu_v_model(image_path, current_directory)
+        
+        # 3. 使用Huggingface本地模型打标
+        elif self.labeler_type == "huggingface":
+            print(f"使用Huggingface本地模型打标: {self.hf_model_id}")
             try:
                 return self.label_with_hf_model(image_path)
             except Exception as e:
@@ -69,24 +73,48 @@ class ImageLabeler:
                 import traceback
                 traceback.print_exc()
                 return {"description": error_message, "zh": ""}
+        
+        # 默认情况（应该不会进入这里，但为了安全起见）
         else:
-            # 使用Gemini模型
-            return self.label_with_gemini(image_path)
+            print(f"未知的打标服务类型: {self.labeler_type}，尝试使用Huggingface模型")
+            try:
+                return self.label_with_hf_model(image_path)
+            except Exception as e:
+                error_message = f"使用Huggingface模型标注图像时出错: {e}"
+                print(error_message)
+                import traceback
+                traceback.print_exc()
+                return {"description": error_message, "zh": ""}
     
-    def label_with_gemini(self, image_path):
+    def label_with_gemini(self, image_path, current_directory=None):
         """使用Gemini模型对图片进行标注"""
         try:
+            # 从配置中获取Gemini配置
+            gemini_config = config.get_gemini_config()
+            api_key = gemini_config.get('api_key', '')
+            model_name = gemini_config.get('model', 'gemini-2.0-flash-exp')
+            temperature = gemini_config.get('temperature', 0.8)
+            max_output_tokens = gemini_config.get('max_output_tokens', 2048)
+            
+            # 获取目录特定的提示词
+            prompt = DEFAULT_PROMPT
+            if current_directory:
+                dir_prompts = config.get_directory_prompts()
+                if current_directory in dir_prompts:
+                    prompt = dir_prompts[current_directory]
+            
             # 确保API密钥已配置
-            if not self.api_key:
+            if not api_key:
                 print("Gemini API key not configured")
-                return {"description": "Gemini API key not configured", "zh": ""}
+                return {"description": "[调用失败] Gemini API密钥未配置", "zh": ""}
                 
             # 配置API
-            genai.configure(api_key=self.api_key)
+            genai.configure(api_key=api_key)
             
             # 初始化模型（如果尚未初始化或模型名称已更改）
-            if not self.gemini_model or self.gemini_model.model_name != self.model_name:
-                self.gemini_model = genai.GenerativeModel(self.model_name)
+            if not self.gemini_model or getattr(self.gemini_model, 'model_name', '') != model_name:
+                print(f"初始化Gemini模型: {model_name}")
+                self.gemini_model = genai.GenerativeModel(model_name)
             
             # 加载图像
             with Image.open(image_path) as img:
@@ -96,10 +124,10 @@ class ImageLabeler:
             
             # 生成响应
             response = self.gemini_model.generate_content(
-                [self.prompt, img],
+                [prompt, img],
                 generation_config=genai.GenerationConfig(
-                    temperature=self.temperature,
-                    max_output_tokens=self.max_output_tokens
+                    temperature=temperature,
+                    max_output_tokens=max_output_tokens
                 )
             )
             
@@ -172,7 +200,7 @@ class ImageLabeler:
             # 如果下载失败，返回原始model_id，让transformers自行处理
             return model_id
     
-    def label_with_zhipu_v_model(self, image_path):
+    def label_with_zhipu_v_model(self, image_path, current_directory=None):
         """使用智谱多模态模型对图片进行标注"""
         try:
             # 获取智谱AI配置
@@ -182,6 +210,13 @@ class ImageLabeler:
             temperature = zhipu_config.get('temperature', 0.7)
             max_tokens = zhipu_config.get('max_tokens', 2048)
             
+            # 获取目录特定的提示词
+            prompt = DEFAULT_ZHIPU_PROMPT
+            if current_directory:
+                dir_prompts = config.get_directory_prompts()
+                if current_directory in dir_prompts:
+                    prompt = dir_prompts[current_directory]
+            
             if not api_key:
                 return {"description": "[调用失败] 智谱AI API密钥未配置", "zh": ""}
             
@@ -189,21 +224,7 @@ class ImageLabeler:
             with open(image_path, "rb") as image_file:
                 base64_image = base64.b64encode(image_file.read()).decode('utf-8')
             
-            # 构建提示词
-            prompt = f"""请详细描述这张图片的内容，包括：
-1. 主要对象和动作
-2. 场景和氛围
-3. 艺术风格
-4. 服装和外观
-5. 构图和视角
-6. 光线和色彩
-7. 细节和纹理
-
-使用以下JSON格式返回结果：
-{{
-  "description": "英文描述",
-  "zh": "中文描述"
-}}"""
+            # 已经在方法开始获取了提示词，这里不需要再获取
             
             # 初始化客户端
             client = ZhipuAI(api_key=api_key)
@@ -233,11 +254,34 @@ class ImageLabeler:
                 
                 # 尝试解析JSON
                 try:
+                    # 检查是否是Markdown代码块包裹的JSON
+                    if result_text.startswith('```') and '```' in result_text[3:]:
+                        # 提取代码块内容
+                        code_block = result_text.split('```', 2)[1]
+                        if code_block.startswith('json'):
+                            code_block = code_block[4:].strip()
+                        else:
+                            code_block = code_block.strip()
+                        result_text = code_block
+                    
+                    # 尝试提取JSON部分
+                    if '{' in result_text and '}' in result_text:
+                        start_idx = result_text.find('{')
+                        end_idx = result_text.rfind('}') + 1
+                        if start_idx >= 0 and end_idx > start_idx:
+                            json_text = result_text[start_idx:end_idx]
+                            result = json.loads(json_text)
+                            if 'description' in result:
+                                return result
+                    
+                    # 直接尝试解析整个文本
                     result = json.loads(result_text)
                     if 'description' in result:
                         return result
-                except json.JSONDecodeError:
-                    pass
+                        
+                except json.JSONDecodeError as e:
+                    print(f"智谱模型返回的JSON解析失败: {e}")
+                    print(f"原始响应: {result_text}")
                 
                 # 如果无法解析为JSON，返回原始文本
                 return {"description": result_text, "zh": ""}

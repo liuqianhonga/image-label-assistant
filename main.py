@@ -4,7 +4,7 @@ import json
 from PyQt5.QtWidgets import QApplication, QMainWindow, QSplitter, QListWidget, QTableWidget, QTableWidgetItem
 from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QLineEdit, QHeaderView, QFileDialog, QMessageBox
 from PyQt5.QtWidgets import QLabel, QStyledItemDelegate, QDesktopWidget, QTextEdit, QAbstractItemView, QDialog, QComboBox, QDoubleSpinBox, QSpinBox
-from PyQt5.QtWidgets import QTabWidget, QRadioButton, QButtonGroup, QGroupBox
+from PyQt5.QtWidgets import QTabWidget, QRadioButton, QButtonGroup, QGroupBox, QFormLayout
 from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal
 from PyQt5.QtGui import QPixmap, QIcon
 from image_labeler import ImageLabeler
@@ -73,6 +73,10 @@ class APIConfigDialog(QDialog):
         api_key_layout.addWidget(self.gemini_api_key_input)
         gemini_layout.addLayout(api_key_layout)
         
+        # Gemini配置区域
+        config_group = QGroupBox("Gemini配置")
+        config_layout = QVBoxLayout(config_group)
+        
         # 模型选择
         model_layout = QHBoxLayout()
         model_label = QLabel("模型:")
@@ -84,7 +88,7 @@ class APIConfigDialog(QDialog):
                 self.gemini_model_combo.setCurrentIndex(index)
         model_layout.addWidget(model_label)
         model_layout.addWidget(self.gemini_model_combo)
-        gemini_layout.addLayout(model_layout)
+        config_layout.addLayout(model_layout)
         
         # 温度设置
         temp_layout = QHBoxLayout()
@@ -95,7 +99,7 @@ class APIConfigDialog(QDialog):
         self.gemini_temp_spin.setValue(current_config.get('temperature', 0.8))
         temp_layout.addWidget(temp_label)
         temp_layout.addWidget(self.gemini_temp_spin)
-        gemini_layout.addLayout(temp_layout)
+        config_layout.addLayout(temp_layout)
         
         # 最大输出长度
         max_tokens_layout = QHBoxLayout()
@@ -106,21 +110,20 @@ class APIConfigDialog(QDialog):
         self.gemini_max_tokens_spin.setValue(current_config.get('max_output_tokens', 2048))
         max_tokens_layout.addWidget(max_tokens_label)
         max_tokens_layout.addWidget(self.gemini_max_tokens_spin)
-        gemini_layout.addLayout(max_tokens_layout)
+        config_layout.addLayout(max_tokens_layout)
         
-        # 提示词
-        prompt_layout = QVBoxLayout()
-        prompt_label = QLabel("提示词:")
-        self.gemini_prompt_input = QTextEdit()
-        self.gemini_prompt_input.setPlaceholderText("输入提示词，指导模型生成描述")
-        if 'prompt' in current_config:
-            self.gemini_prompt_input.setText(current_config['prompt'])
-        else:
-            self.gemini_prompt_input.setText(config.DEFAULT_GEMINI_CONFIG['prompt'])
-        self.gemini_prompt_input.setMinimumHeight(100)
-        prompt_layout.addWidget(prompt_label)
-        prompt_layout.addWidget(self.gemini_prompt_input)
-        gemini_layout.addLayout(prompt_layout)
+        # 添加配置组到主布局
+        gemini_layout.addWidget(config_group)
+        
+        # 添加说明文字
+        note_label = QLabel("注意: 提示词配置已移动到目录管理中，每个目录可以设置不同的提示词")
+        note_label.setStyleSheet("color: #666; font-style: italic;")
+        note_label.setWordWrap(True)  # 允许文本换行
+        note_label.setContentsMargins(10, 10, 10, 10)  # 添加内边距
+        gemini_layout.addWidget(note_label)
+        
+        # 添加弹性空间
+        gemini_layout.addStretch(1)
         
     def setup_zhipu_tab(self, current_translate_config, current_label_config):
         """设置智谱AI选项卡"""
@@ -144,7 +147,7 @@ class APIConfigDialog(QDialog):
         model_layout = QHBoxLayout()
         model_label = QLabel("模型:")
         self.zhipu_translate_model = QComboBox()
-        self.zhipu_translate_model.addItems(['glm-4-flash-250414', 'glm-4-flash'])
+        self.zhipu_translate_model.addItems(config.GLM_TRANSLATE_MODELS)
         self.zhipu_translate_model.setCurrentText(current_translate_config.get('model', 'glm-4-flash-250414'))
         model_layout.addWidget(model_label)
         model_layout.addWidget(self.zhipu_translate_model)
@@ -182,7 +185,7 @@ class APIConfigDialog(QDialog):
         model_layout = QHBoxLayout()
         model_label = QLabel("模型:")
         self.zhipu_label_model = QComboBox()
-        self.zhipu_label_model.addItems(['glm-4v-flash', 'glm-4v'])
+        self.zhipu_label_model.addItems(config.GLM_LABEL_MODELS)
         self.zhipu_label_model.setCurrentText(current_label_config.get('model', 'glm-4v-flash'))
         model_layout.addWidget(model_label)
         model_layout.addWidget(self.zhipu_label_model)
@@ -242,8 +245,8 @@ class APIConfigDialog(QDialog):
             'api_key': self.gemini_api_key_input.text().strip(),
             'model': self.gemini_model_combo.currentText(),
             'temperature': self.gemini_temp_spin.value(),
-            'max_output_tokens': self.gemini_max_tokens_spin.value(),
-            'prompt': self.gemini_prompt_input.toPlainText().strip()
+            'max_output_tokens': self.gemini_max_tokens_spin.value()
+            # prompt字段已移除，现在与目录一起配置
         }
     
     def get_zhipu_translate_config(self):
@@ -406,7 +409,7 @@ class LabelingThread(QThread):
             for row, image_path in self.image_paths:
                 try:
                     # 调用打标器进行打标
-                    result = self.labeler.label_image(image_path)
+                    result = self.labeler.label_image(image_path, self.current_path)
                     
                     # 检查返回结果
                     if isinstance(result, dict) and 'description' in result:
@@ -426,7 +429,7 @@ class LabelingThread(QThread):
             # 单个打标模式
             try:
                 # 调用打标器进行打标
-                result = self.labeler.label_image(self.image_path)
+                result = self.labeler.label_image(self.image_path, self.current_path)
                 
                 # 检查返回结果
                 if isinstance(result, dict) and 'description' in result:
@@ -461,32 +464,7 @@ class ImageLabelAssistant(QMainWindow):
         
         # 全屏显示窗口
         self.showMaximized()
-        
-        # 检查是否配置了Gemini，如果没有则弹出配置页面
-        self.check_gemini_config()
-        
-    def check_gemini_config(self):
-        """检查是否配置了Gemini，如果没有则弹出配置页面"""
-        # 获取当前Gemini配置
-        gemini_config = config.get_gemini_config()
-        
-        # 如果没有设置API密钥
-        if not gemini_config.get('api_key'):
-            result = QMessageBox.question(
-                self, 
-                "API配置", 
-                "您尚未配置Gemini API，无法使用图像打标功能。\n\n是否现在配置？",
-                QMessageBox.Yes | QMessageBox.No
-            )
             
-            if result == QMessageBox.Yes:
-                self.show_gemini_config()
-            else:
-                QMessageBox.information(self, "功能受限", "由于未配置Gemini API，打标功能将不可用。\n\n您随时可以通过左侧的'配置API'按钮进行配置。")
-        
-        # 为labeler应用配置
-        self.apply_gemini_config(gemini_config)
-    
     def center_on_screen(self):
         """将窗口居中显示在屏幕上"""
         screen_geometry = QDesktopWidget().availableGeometry()
@@ -531,6 +509,23 @@ class ImageLabelAssistant(QMainWindow):
         self.dir_list.clicked.connect(self.on_directory_clicked)
         left_layout.addWidget(self.dir_list)
         
+        # 为当前选中目录添加提示词配置区域
+        prompt_group = QGroupBox("当前目录提示词配置")
+        prompt_layout = QVBoxLayout(prompt_group)
+
+        # 提示词输入框
+        self.prompt_input = QTextEdit()
+        self.prompt_input.setPlaceholderText("输入当前目录的提示词配置")
+        self.prompt_input.setMinimumHeight(100)
+        prompt_layout.addWidget(self.prompt_input)
+
+        # 保存提示词按钮
+        self.save_prompt_btn = QPushButton("保存提示词配置")
+        self.save_prompt_btn.clicked.connect(self.save_directory_prompt)
+        prompt_layout.addWidget(self.save_prompt_btn)
+
+        left_layout.addWidget(prompt_group)
+        
         # 删除目录按钮
         self.remove_btn = QPushButton("删除选中目录")
         self.remove_btn.clicked.connect(self.remove_directory)
@@ -538,7 +533,7 @@ class ImageLabelAssistant(QMainWindow):
         
         # 添加Gemini配置按钮
         self.gemini_config_btn = QPushButton("配置API")
-        self.gemini_config_btn.clicked.connect(self.show_gemini_config)
+        self.gemini_config_btn.clicked.connect(lambda: self.show_gemini_config(0))
         left_layout.addWidget(self.gemini_config_btn)
         
         main_splitter.addWidget(left_widget)
@@ -562,8 +557,7 @@ class ImageLabelAssistant(QMainWindow):
                                   "microsoft/Florence-2-base-ft", 
                                   "microsoft/Florence-2-large", 
                                   "microsoft/Florence-2-base",
-                                  "智谱GLM-4V-Flash",
-                                  "智谱GLM-4V-Plus-0111"])
+                                  "智谱AI"])
         self.model_combo.setCurrentIndex(1)  # 默认使用第一个Florence模型
         self.model_combo.currentIndexChanged.connect(self.on_model_changed)
         model_selection_layout.addWidget(self.model_combo)
@@ -626,8 +620,12 @@ class ImageLabelAssistant(QMainWindow):
         main_splitter.addWidget(right_widget)
         main_splitter.setSizes([300, 900])
         
-    def show_gemini_config(self):
-        """显示API配置对话框"""
+    def show_gemini_config(self, tab_index=0):
+        """显示API配置对话框
+        
+        Args:
+            tab_index: 默认显示的选项卡索引，0为Gemini，1为智谱AI
+        """
         # 获取当前配置
         current_gemini_config = config.get_gemini_config()
         current_zhipu_translate_config = config.get_zhipu_translate_config()
@@ -641,11 +639,17 @@ class ImageLabelAssistant(QMainWindow):
             current_zhipu_label_config
         )
         
+        # 设置默认显示的选项卡
+        config_dialog.tabs.setCurrentIndex(tab_index)
+        
         # 将对话框移动到屏幕中央
-        screen_rect = QDesktopWidget().availableGeometry()
-        dialog_rect = config_dialog.frameGeometry()
-        dialog_rect.moveCenter(screen_rect.center())
-        config_dialog.move(dialog_rect.topLeft())
+        # 先显示对话框，然后再调整位置，这样可以确保对话框大小已经计算出来
+        config_dialog.show()
+        frameGm = config_dialog.frameGeometry()
+        screen = QDesktopWidget().availableGeometry().center()
+        frameGm.moveCenter(screen)
+        config_dialog.move(frameGm.topLeft())
+        config_dialog.hide()
         
         if config_dialog.exec_() == QDialog.Accepted:
             # 获取新配置
@@ -654,7 +658,6 @@ class ImageLabelAssistant(QMainWindow):
             new_zhipu_label_config = config_dialog.get_zhipu_label_config()
             
             # 应用配置
-            self.apply_gemini_config(new_gemini_config)
             config.save_gemini_config(new_gemini_config)
             config.save_zhipu_translate_config(new_zhipu_translate_config)
             config.save_zhipu_label_config(new_zhipu_label_config)
@@ -662,43 +665,33 @@ class ImageLabelAssistant(QMainWindow):
             # 显示确认消息
             QMessageBox.information(self, "配置成功", "API配置已保存")
     
-    def apply_gemini_config(self, config_data):
-        """应用Gemini配置"""
-        # 配置打标器
-        self.labeler.configure_gemini(
-            api_key=config_data['api_key'],
-            model_name=config_data['model'],
-            temperature=config_data['temperature'],
-            max_output_tokens=config_data['max_output_tokens'],
-            prompt=config_data['prompt']
-        )
-    
     def load_data(self):
         """从配置模块加载保存的目录列表和配置"""
         # 获取目录列表
         directories = config.get_directories()
         
         # 检查目录是否存在
-        valid_directories = [d for d in directories if os.path.isdir(d)]
+        valid_directories = [d for d in directories if os.path.isdir(d['path'])]
         
         # 添加有效的目录到列表
         for directory in valid_directories:
-            self.dir_list.addItem(directory)
+            self.dir_list.addItem(directory['path'])
         
         # 如果有目录被过滤掉了，更新配置
         if len(valid_directories) < len(directories):
             config.update_directories(valid_directories)
-        
-        # 加载并应用Gemini配置
-        gemini_config = config.get_gemini_config()
-        self.apply_gemini_config(gemini_config)
     
     def save_data(self):
         """保存目录列表到配置模块"""
         # 获取目录列表
         directories = []
+        dir_prompts = config.get_directory_prompts()
+        
         for i in range(self.dir_list.count()):
-            directories.append(self.dir_list.item(i).text())
+            path = self.dir_list.item(i).text()
+            # 保留原有提示词配置，如果有的话
+            prompt = dir_prompts.get(path, config.DEFAULT_PROMPT)
+            directories.append({"path": path, "prompt": prompt})
         
         # 更新目录列表
         config.update_directories(directories)
@@ -762,6 +755,18 @@ class ImageLabelAssistant(QMainWindow):
         """从列表中删除选中的目录"""
         current_item = self.dir_list.currentItem()
         if current_item:
+            # 弹出确认对话框
+            result = QMessageBox.question(
+                self, 
+                "确认删除", 
+                f"确定要删除目录 '{current_item.text()}' 吗？",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No  # 默认选择"否"
+            )
+            
+            if result != QMessageBox.Yes:
+                return
+                
             self.dir_list.takeItem(self.dir_list.row(current_item))
             # 如果删除的是当前正在显示的目录，则清空图像表格
             if current_item.text() == self.current_path:
@@ -772,6 +777,28 @@ class ImageLabelAssistant(QMainWindow):
             # 保存目录列表到配置模块
             self.save_data()
         
+    def load_directory_prompt(self, directory_path):
+        """加载目录的提示词配置"""
+        dir_prompts = config.get_directory_prompts()
+        prompt = dir_prompts.get(directory_path, config.DEFAULT_PROMPT)
+        self.prompt_input.setText(prompt)
+    
+    def save_directory_prompt(self):
+        """保存当前目录的提示词配置"""
+        if not self.current_path:
+            QMessageBox.warning(self, "警告", "请先选择一个目录")
+            return
+            
+        prompt = self.prompt_input.toPlainText()
+        if not prompt:
+            QMessageBox.warning(self, "警告", "提示词不能为空")
+            return
+            
+        # 保存提示词
+        config.set_directory_prompt(self.current_path, prompt)
+        
+        QMessageBox.information(self, "保存成功", "提示词配置已保存")
+    
     def on_directory_clicked(self, index):
         """当点击目录列表项时，加载该目录中的图像"""
         selected_dir = self.dir_list.currentItem().text()
@@ -794,6 +821,11 @@ class ImageLabelAssistant(QMainWindow):
         # 切换目录并重置修改状态
         self.current_path = selected_dir
         self.content_modified = False
+        
+        # 加载该目录的提示词配置
+        self.load_directory_prompt(selected_dir)
+        
+        # 加载目录中的图像
         self.load_images_from_directory(selected_dir)
         
     def load_images_from_directory(self, path):
@@ -886,8 +918,6 @@ class ImageLabelAssistant(QMainWindow):
                 QMessageBox.warning(self, "API密钥未配置", "请先配置Gemini API密钥")
                 return
                 
-            # 重新应用配置确保labeler是最新的
-            self.apply_gemini_config(gemini_config)
         else:  # Huggingface模型
             # 获取当前选择的模型名称
             model_id = self.model_combo.currentText()
@@ -1135,8 +1165,6 @@ class ImageLabelAssistant(QMainWindow):
                 QMessageBox.warning(self, "API密钥未配置", "请先配置Gemini API密钥")
                 return
                 
-            # 重新应用配置确保labeler是最新的
-            self.apply_gemini_config(gemini_config)
         else:  # Huggingface模型
             # 获取当前选择的模型名称
             model_id = self.model_combo.currentText()
@@ -1263,8 +1291,11 @@ class ImageLabelAssistant(QMainWindow):
         # 更新label_all_btn的文本
         display_name = selected_model
         if current_index > 0:  # 非Gemini模型
-            if selected_model in ["智谱GLM-4V-Flash", "智谱GLM-4V-Plus-0111"]:
-                display_name = selected_model
+            if selected_model == "智谱AI":
+                # 获取当前配置的模型
+                zhipu_config = config.get_zhipu_label_config()
+                model_name = zhipu_config.get('model', 'glm-4v-flash')
+                display_name = f"智谱AI ({model_name})"
             else:
                 display_name = selected_model.split('/')[-1]  # 只显示模型名称部分
         
@@ -1272,16 +1303,53 @@ class ImageLabelAssistant(QMainWindow):
         
         # 根据模型类型设置labeler配置
         if current_index == 0:  # Gemini
-            self.labeler.use_hf_model = False
+            # 检查是否配置Gemini API
+            gemini_config = config.get_gemini_config()
+            if not gemini_config.get('api_key'):
+                result = QMessageBox.question(
+                    self, 
+                    "API配置", 
+                    "您尚未配置Gemini API，无法使用Gemini打标功能。\n\n是否现在配置？",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                
+                if result == QMessageBox.Yes:
+                    self.show_gemini_config(0)  # 显示Gemini选项卡
+                else:
+                    QMessageBox.information(self, "功能受限", "由于未配置Gemini API，打标功能将不可用。\n\n您随时可以通过左侧的'配置API'按钮进行配置。")
+                    # 切换到默认的Florence模型
+                    self.model_combo.setCurrentIndex(1)
+                    return
+            
+            # 设置打标服务类型为 Gemini
+            self.labeler.labeler_type = "gemini"
             self.labeler.hf_model_id = None
-            self.labeler.model_name = selected_model
-        elif selected_model in ["智谱GLM-4V-Flash", "智谱GLM-4V-Plus-0111"]:  # 智谱多模态
-            self.labeler.use_hf_model = False
-            self.labeler.model_name = "glm-4v-flash" if selected_model == "智谱GLM-4V-Flash" else "glm-4v-plus-0111"
+        elif selected_model == "智谱AI":  # 智谱多模态
+            # 检查是否配置智谱API
+            zhipu_config = config.get_zhipu_label_config()
+            if not zhipu_config.get('api_key'):
+                result = QMessageBox.question(
+                    self, 
+                    "API配置", 
+                    "您尚未配置智谱 API，无法使用智谱打标功能。\n\n是否现在配置？",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                
+                if result == QMessageBox.Yes:
+                    self.show_gemini_config(1)  # 显示智谱AI选项卡
+                else:
+                    QMessageBox.information(self, "功能受限", "由于未配置智谱 API，打标功能将不可用。\n\n您随时可以通过左侧的'配置API'按钮进行配置。")
+                    # 切换到默认的Florence模型
+                    self.model_combo.setCurrentIndex(1)
+                    return
+            
+            # 设置打标服务类型为 智谱
+            self.labeler.labeler_type = "zhipu"
+            self.labeler.hf_model_id = None
         else:  # Huggingface模型
-            self.labeler.use_hf_model = True
+            # 设置打标服务类型为 huggingface
+            self.labeler.labeler_type = "huggingface"
             self.labeler.hf_model_id = selected_model
-            self.labeler.model_name = selected_model
             # 清空已加载的模型，以便重新加载所选模型
             if self.labeler.hf_model is not None and self.labeler.hf_model.get("model_id") != selected_model:
                 self.labeler.hf_model = None
