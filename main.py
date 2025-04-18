@@ -446,6 +446,39 @@ class LabelingThread(QThread):
                 error_msg = f"打标失败: {str(e)}"
                 self.labeling_failed.emit(self.row, error_msg)
 
+class ImageDialog(QDialog):
+    def __init__(self, image_path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("原图预览")
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        layout = QVBoxLayout(self)
+        self.label = QLabel()
+        self.label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.label)
+        self.setMinimumSize(300, 200)
+
+        # 加载原图并自适应窗口显示全部内容
+        self.pixmap = QPixmap(image_path)
+        self.update_pixmap()
+        # 根据图片宽高比例设置窗口初始大小，最大不超过1200x900
+        if not self.pixmap.isNull():
+            max_w, max_h = 1200, 900
+            w, h = self.pixmap.width(), self.pixmap.height()
+            scale = min(max_w / w, max_h / h, 1.0)
+            self.resize(int(w * scale) + 40, int(h * scale) + 40)
+
+    def resizeEvent(self, event):
+        # 窗口大小变化时，图片自适应缩放，保证完整显示
+        self.update_pixmap()
+        super().resizeEvent(event)
+
+    def update_pixmap(self):
+        if not self.pixmap.isNull():
+            w = max(self.width() - 40, 100)
+            h = max(self.height() - 40, 100)
+            scaled = self.pixmap.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.label.setPixmap(scaled)
+
 class ImageLabelAssistant(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -457,15 +490,6 @@ class ImageLabelAssistant(QMainWindow):
         
         # 初始化标注器
         self.labeler = ImageLabeler()
-        
-        # 设置默认的模型选择（与UI中的选择保持一致）
-        selected_model = self.model_combo.currentText()
-        if self.model_combo.currentIndex() > 0:  # 如果选择的不是Gemini
-            self.labeler.use_hf_model = True
-            self.labeler.hf_model_id = selected_model
-            # 更新打标按钮名称
-            display_name = selected_model.split('/')[-1]
-            self.label_all_btn.setText(f"一键打标 ({display_name})")
         
         # 加载保存的目录列表和配置
         self.load_data()
@@ -503,10 +527,13 @@ class ImageLabelAssistant(QMainWindow):
         self.dir_input.setPlaceholderText("点击选择按钮添加数据集目录")
         self.browse_btn = QPushButton("选择")
         self.browse_btn.clicked.connect(self.browse_directory)
-        
         input_layout.addWidget(self.dir_input)
         input_layout.addWidget(self.browse_btn)
-        
+        # 删除目录按钮移到这里，并设置为红色
+        self.remove_btn = QPushButton("删除")
+        self.remove_btn.setStyleSheet("QPushButton { color: white; background-color: red; border-radius: 4px; padding: 4px 12px; }")
+        self.remove_btn.clicked.connect(self.remove_directory)
+        input_layout.addWidget(self.remove_btn)
         left_layout.addLayout(input_layout)
         
         # 数据集列表
@@ -530,11 +557,6 @@ class ImageLabelAssistant(QMainWindow):
         prompt_layout.addWidget(self.save_prompt_btn)
 
         left_layout.addWidget(prompt_group)
-        
-        # 删除目录按钮
-        self.remove_btn = QPushButton("删除选中目录")
-        self.remove_btn.clicked.connect(self.remove_directory)
-        left_layout.addWidget(self.remove_btn)
         
         # 添加Gemini配置按钮
         self.gemini_config_btn = QPushButton("配置API")
@@ -576,8 +598,7 @@ class ImageLabelAssistant(QMainWindow):
         self.trigger_input.setMinimumWidth(200)
         
         # 按钮
-        selected_model = self.model_combo.currentText()  # 获取当前选择的模型名称
-        self.label_all_btn = QPushButton(f"一键打标 ({selected_model})")
+        self.label_all_btn = QPushButton("一键打标")
         self.label_all_btn.clicked.connect(self.label_all_images)
         self.save_all_btn = QPushButton("一键保存")
         self.save_all_btn.clicked.connect(self.save_all_labels)
@@ -620,6 +641,9 @@ class ImageLabelAssistant(QMainWindow):
         
         # 设置行高可以手动调整
         self.table.verticalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        
+        # 绑定双击信号
+        self.table.cellDoubleClicked.connect(self.on_table_cell_double_clicked)
         
         right_layout.addWidget(self.table)
         
@@ -958,13 +982,7 @@ class ImageLabelAssistant(QMainWindow):
             item = QTableWidgetItem(zh_translation)
             item.setFlags(item.flags() & ~Qt.ItemIsEditable)  # 设置为不可编辑
             self.table.setItem(row, 2, item)
-        else:
-            # 需要调用翻译API
-            translated = translate_text(description)
-            item = QTableWidgetItem(translated)
-            item.setFlags(item.flags() & ~Qt.ItemIsEditable)  # 设置为不可编辑
-            self.table.setItem(row, 2, item)
-        
+
         # 恢复信号连接
         self.table.itemChanged.connect(self.on_table_item_changed)
         
@@ -1191,8 +1209,7 @@ class ImageLabelAssistant(QMainWindow):
     def on_all_labeling_completed(self, success_count):
         """所有标注完成时的处理"""
         # 恢复按钮状态
-        model_name = self.model_combo.currentText()
-        self.label_all_btn.setText(f"一键打标 ({model_name})")
+        self.label_all_btn.setText("一键打标")
         self.label_all_btn.setEnabled(True)
         
         # 检查所有行，确保所有翻译按钮和打标按钮都已启用
@@ -1250,24 +1267,10 @@ class ImageLabelAssistant(QMainWindow):
         # 标记内容已被修改
         self.content_modified = True
 
-    def on_model_changed(self):
+    def on_model_changed(self, current_index):
         """模型选择变化时的回调函数"""
         # 获取当前选择的模型索引和文本
-        current_index = self.model_combo.currentIndex()
         selected_model = self.model_combo.currentText()
-        
-        # 更新label_all_btn的文本
-        display_name = selected_model
-        if current_index > 0:  # 非Gemini模型
-            if selected_model == "智谱AI":
-                # 获取当前配置的模型
-                zhipu_config = config.get_zhipu_label_config()
-                model_name = zhipu_config.get('model', 'glm-4v-flash')
-                display_name = f"智谱AI ({model_name})"
-            else:
-                display_name = selected_model.split('/')[-1]  # 只显示模型名称部分
-        
-        self.label_all_btn.setText(f"一键打标 ({display_name})")
         
         # 根据模型类型设置labeler配置
         if current_index == 0:  # Gemini
@@ -1337,6 +1340,16 @@ class ImageLabelAssistant(QMainWindow):
             thumbnail = pixmap
         self.thumbnail_cache[image_path] = thumbnail
         return thumbnail
+
+    def on_table_cell_double_clicked(self, row, column):
+        # 仅对图片列（第0列）响应
+        if column == 0:
+            item = self.table.item(row, 0)
+            if item is not None:
+                image_path = item.data(Qt.UserRole)
+                if image_path:
+                    dlg = ImageDialog(image_path, self)
+                    dlg.exec_()
 
 def load_stylesheet():
     """加载QSS样式表"""

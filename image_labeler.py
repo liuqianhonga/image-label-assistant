@@ -169,35 +169,6 @@ class ImageLabeler:
             # 返回错误信息
             return {"description": error_message, "zh": ""}
     
-    def get_model_local_path(self, model_id):
-        """获取模型的本地路径，如果不存在则下载"""
-        # 模型ID的最后一部分作为目录名
-        model_name = model_id.split("/")[-1]
-        local_model_path = os.path.join(self.models_dir, model_name)
-        
-        # 检查本地是否已存在模型
-        if os.path.exists(local_model_path) and os.path.isdir(local_model_path):
-            # 检查是否是有效的模型目录(至少包含config.json文件)
-            if os.path.exists(os.path.join(local_model_path, "config.json")):
-                print(f"模型已存在于本地: {local_model_path}")
-                return local_model_path
-        
-        # 模型不存在，使用huggingface_hub下载
-        print(f"模型不存在，正在从HuggingFace下载到 {local_model_path}...")
-        try:
-            # 使用snapshot_download下载模型
-            snapshot_path = snapshot_download(
-                repo_id=model_id,
-                local_dir=local_model_path,
-                local_dir_use_symlinks=False
-            )
-            print(f"模型下载完成: {snapshot_path}")
-            return local_model_path
-        except Exception as e:
-            print(f"模型下载失败: {e}")
-            # 如果下载失败，返回原始model_id，让transformers自行处理
-            return model_id
-    
     def label_with_zhipu_v_model(self, image_path, current_directory=None):
         """使用智谱多模态模型对图片进行标注"""
         try:
@@ -294,6 +265,35 @@ class ImageLabeler:
             traceback.print_exc()
             return {"description": error_message, "zh": ""}
 
+    def get_model_local_path(self, model_id):
+        """获取模型的本地路径，如果不存在则下载"""
+        # 模型ID的最后一部分作为目录名
+        model_name = model_id.split("/")[-1]
+        local_model_path = os.path.join(self.models_dir, model_name)
+        
+        # 检查本地是否已存在模型
+        if os.path.exists(local_model_path) and os.path.isdir(local_model_path):
+            # 检查是否是有效的模型目录(至少包含config.json文件)
+            if os.path.exists(os.path.join(local_model_path, "config.json")):
+                print(f"模型已存在于本地: {local_model_path}")
+                return local_model_path
+        
+        # 模型不存在，使用huggingface_hub下载
+        print(f"模型不存在，正在从HuggingFace下载到 {local_model_path}...")
+        try:
+            # 使用snapshot_download下载模型
+            snapshot_path = snapshot_download(
+                repo_id=model_id,
+                local_dir=local_model_path,
+                local_dir_use_symlinks=False
+            )
+            print(f"模型下载完成: {snapshot_path}")
+            return local_model_path
+        except Exception as e:
+            print(f"模型下载失败: {e}")
+            # 如果下载失败，返回原始model_id，让transformers自行处理
+            return model_id
+
     def label_with_hf_model(self, image_path):
         """使用huggingface模型在本地对图片进行标注"""
         
@@ -358,7 +358,7 @@ class ImageLabeler:
                 return self.label_with_hf_model(image_path)
             
             # 准备提示词 - 使用配置中的提示词
-            prompt = self.prompt
+            prompt = "<MORE_DETAILED_CAPTION>"
             
             # 处理图像和文本
             inputs = processor(text=prompt, images=image, return_tensors="pt", do_rescale=False).to(model_dtype).to(device)
