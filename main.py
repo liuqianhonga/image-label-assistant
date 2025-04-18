@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import QLabel, QStyledItemDelegate, QDesktopWidget, QTextEd
 from PyQt5.QtWidgets import QTabWidget, QRadioButton, QButtonGroup, QGroupBox, QFormLayout
 from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal
 from PyQt5.QtGui import QPixmap, QIcon
-from image_labeler import ImageLabeler
+from image_labeler import ImageLabeler, LabelerType
 from utils import translate_text
 import config
 
@@ -1315,8 +1315,7 @@ class ImageLabelAssistant(QMainWindow):
                     return
             
             # 设置打标服务类型为 Gemini
-            self.labeler.labeler_type = "gemini"
-            self.labeler.hf_model_id = None
+            self.labeler.labeler_type = LabelerType.GEMINI
         elif selected_model == "智谱AI":  # 智谱多模态
             # 检查是否配置智谱API
             zhipu_config = config.get_zhipu_label_config()
@@ -1337,11 +1336,10 @@ class ImageLabelAssistant(QMainWindow):
                     return
             
             # 设置打标服务类型为 智谱
-            self.labeler.labeler_type = "zhipu"
-            self.labeler.hf_model_id = None
+            self.labeler.labeler_type = LabelerType.ZHIPU
         else:  # Huggingface模型
             # 设置打标服务类型为 huggingface
-            self.labeler.labeler_type = "huggingface"
+            self.labeler.labeler_type = LabelerType.HUGGINGFACE
             self.labeler.hf_model_id = selected_model
             # 清空已加载的模型，以便重新加载所选模型
             if self.labeler.hf_model is not None and self.labeler.hf_model.get("model_id") != selected_model:

@@ -6,30 +6,30 @@ import base64
 import json
 import time
 import google.generativeai as genai
-from config import DEFAULT_GEMINI_CONFIG, GEMINI_MODELS, DEFAULT_PROMPT
+from config import DEFAULT_GEMINI_CONFIG, DEFAULT_PROMPT
 import torch
 from transformers import AutoModelForCausalLM, AutoProcessor
 from huggingface_hub import snapshot_download
 import shutil
 import config
 from zhipuai import ZhipuAI
+from enum import Enum
 
+class LabelerType(Enum):
+    GEMINI = "gemini"
+    ZHIPU = "zhipu"
+    HUGGINGFACE = "huggingface"
 
 class ImageLabeler:
     """图像标注类，用于处理图像识别和标注"""
     
-    # 可用的Gemini模型列表
-    GEMINI_MODELS = GEMINI_MODELS
-    
     def __init__(self):
         # 打标服务类型："gemini", "zhipu", "huggingface"
-        self.labeler_type = "huggingface"  # 默认使用huggingface模型
+        self.labeler_type = LabelerType.HUGGINGFACE  # 默认使用huggingface模型
         
         # 模型实例缓存
         self.gemini_model = None  # Gemini模型实例
         self.hf_model = None      # Huggingface模型实例
-        
-        # 我们不再在实例中存储提示词，而是在打标时实时获取
         
         # Huggingface模型相关配置
         self.hf_model_id = "MiaoshouAI/Florence-2-large-PromptGen-v2.0"  # 默认模型ID
@@ -37,8 +37,6 @@ class ImageLabeler:
         # 创建models目录
         self.models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
         os.makedirs(self.models_dir, exist_ok=True)
-        
-    # set_prompt方法已移除，因为我们现在在打标时实时获取提示词
         
     def label_image(self, image_path, current_directory=None):
         """
@@ -50,12 +48,12 @@ class ImageLabeler:
             current_directory: 当前目录路径，用于获取目录特定的提示词
         """
         # 1. 使用Gemini打标服务
-        if self.labeler_type == "gemini":
+        if self.labeler_type == LabelerType.GEMINI:
             print("使用Gemini打标服务")
             return self.label_with_gemini(image_path, current_directory)
         
         # 2. 使用智谱打标服务
-        elif self.labeler_type == "zhipu":
+        elif self.labeler_type == LabelerType.ZHIPU:
             # 从配置中获取具体的模型名称
             zhipu_config = config.get_zhipu_label_config()
             model = zhipu_config.get('model', 'glm-4v-plus-0111')
@@ -63,7 +61,7 @@ class ImageLabeler:
             return self.label_with_zhipu_v_model(image_path, current_directory)
         
         # 3. 使用Huggingface本地模型打标
-        elif self.labeler_type == "huggingface":
+        elif self.labeler_type == LabelerType.HUGGINGFACE:
             print(f"使用Huggingface本地模型打标: {self.hf_model_id}")
             try:
                 return self.label_with_hf_model(image_path)
