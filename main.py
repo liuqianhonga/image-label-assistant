@@ -250,12 +250,22 @@ class ImageLabelAssistant(QMainWindow):
         self.remove_btn.clicked.connect(self.remove_directory)
         input_layout.addWidget(self.remove_btn)
         left_layout.addLayout(input_layout)
-        
+
         # 数据集列表
         self.dir_list = QListWidget()
         self.dir_list.clicked.connect(self.on_directory_clicked)
         left_layout.addWidget(self.dir_list)
-        
+
+        # 触发词输入框区域（严格移动到数据集目录列表下方）
+        trigger_layout = QHBoxLayout()
+        trigger_label = QLabel("触发词:")
+        self.trigger_input = QLineEdit()
+        self.trigger_input.setPlaceholderText("自动提取或手动输入触发词")
+        self.trigger_input.setMinimumWidth(200)
+        trigger_layout.addWidget(trigger_label)
+        trigger_layout.addWidget(self.trigger_input)
+        left_layout.addLayout(trigger_layout)
+
         # 为当前选中数据集添加提示词配置区域
         prompt_group = QGroupBox("当前数据集提示词配置")
         prompt_layout = QVBoxLayout(prompt_group)
@@ -286,10 +296,10 @@ class ImageLabelAssistant(QMainWindow):
         
         # 按钮区域
         button_layout = QHBoxLayout()
-        
+
         # 创建横向布局，用于放置模型选择和标签
         model_selection_layout = QHBoxLayout()
-        
+
         # 模型选择下拉菜单
         model_selection_layout.addWidget(QLabel("模型:"))
         self.model_combo = QComboBox()
@@ -303,15 +313,12 @@ class ImageLabelAssistant(QMainWindow):
         self.model_combo.setCurrentIndex(1)  # 默认使用第一个Florence模型
         self.model_combo.currentIndexChanged.connect(self.on_model_changed)
         model_selection_layout.addWidget(self.model_combo)
-        
+
         button_layout.addLayout(model_selection_layout)
-        
-        # 触发词输入框
-        trigger_label = QLabel("触发词:")
-        self.trigger_input = QLineEdit()
-        self.trigger_input.setPlaceholderText("输入触发词，将添加到标签前面")
-        self.trigger_input.setMinimumWidth(200)
-        
+
+        # 移除右侧表格上方的触发词输入框（原有相关代码全部删除）
+        # 触发词输入框已由左侧唯一一处负责
+
         # 按钮
         self.label_all_btn = QPushButton("一键打标")
         self.label_all_btn.clicked.connect(self.label_all_images)
@@ -320,8 +327,6 @@ class ImageLabelAssistant(QMainWindow):
         self.translate_all_btn = QPushButton("一键翻译")
         self.translate_all_btn.clicked.connect(self.translate_all_labels)
         
-        button_layout.addWidget(trigger_label)
-        button_layout.addWidget(self.trigger_input)
         button_layout.addWidget(self.label_all_btn)
         button_layout.addWidget(self.translate_all_btn)
         button_layout.addWidget(self.save_all_btn)
@@ -513,9 +518,9 @@ class ImageLabelAssistant(QMainWindow):
         QMessageBox.information(self, "保存成功", "提示词配置已保存")
     
     def on_directory_clicked(self, index):
-        """当点击目录列表项时，加载该目录中的图像"""
+        """当点击目录列表项时，加载该目录中的图像，并自动提取触发词"""
         selected_dir = self.dir_list.currentItem().text()
-        
+
         # 如果内容已被修改，显示确认对话框，即使点击的是当前目录
         if self.content_modified:
             action_text = "重新加载" if self.current_path == selected_dir else "切换"
@@ -526,21 +531,46 @@ class ImageLabelAssistant(QMainWindow):
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No  # 默认选择"否"
             )
-            
             if result != QMessageBox.Yes:
-                # 用户选择不切换/不重载，不执行任何操作
                 return
-        
+
         # 切换目录并重置修改状态
         self.current_path = selected_dir
         self.content_modified = False
-        
+
         # 加载该目录的提示词配置
         self.load_directory_prompt(selected_dir)
-        
+
         # 加载目录中的图像
         self.load_images_from_directory(selected_dir)
-        
+
+        # 自动提取触发词
+        self.auto_extract_trigger_word()
+
+    def auto_extract_trigger_word(self):
+        """自动从任意两张图像的打标文本中提取触发词"""
+        labels = []
+        # 收集所有非空英文打标文本
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 1)
+            if item and item.text():
+                labels.append(item.text().strip())
+            if len(labels) == 2:
+                break
+        if len(labels) < 2:
+            self.trigger_input.setText("")
+            return
+        # 提取第一个英文逗号前的部分
+        def get_prefix(label):
+            idx = label.find(",")
+            return label[:idx].strip() if idx != -1 else label.strip()
+        prefix1 = get_prefix(labels[0])
+        prefix2 = get_prefix(labels[1])
+        if prefix1 and prefix1 == prefix2:
+            self.trigger_input.setText(prefix1)
+        else:
+            self.trigger_input.setText("")
+    
     def load_images_from_directory(self, path):
         """加载指定目录中的所有图像文件"""
         self.image_files = []
