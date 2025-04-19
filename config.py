@@ -48,6 +48,26 @@ DEFAULT_ZHIPU_LABEL_CONFIG = {
     'max_tokens': 2048
 }
 
+# Florence2模型默认配置
+DEFAULT_FLORENCE2_CONFIG = {
+    'model': 'MiaoshouAI/Florence-2-large-PromptGen-v2.0',
+    'device': 'cuda',  # 或 'cpu'
+    'dtype': 'auto',   # 可选: 'auto', 'float16', 'float32' 等
+    'prompt': '<DETAILED_CAPTION>',
+    'max_new_tokens': 1024,
+    'do_sample': True,
+    'temperature': 0.6,
+    'num_beams': 4,
+    'top_p': 0.9,
+}
+
+# 可用Florence2 prompt选项
+FLORENCE2_PROMPT_OPTIONS = [
+    '<CAPTION>',
+    '<DETAILED_CAPTION>',
+    '<MORE_DETAILED_CAPTION>',
+]
+
 # 可用的Gemini模型列表
 GEMINI_MODELS = [
     "gemini-2.0-flash-exp",
@@ -60,6 +80,16 @@ GEMINI_MODELS = [
 GLM_TRANSLATE_MODELS = ['glm-4-flash-250414']
 GLM_LABEL_MODELS = ['glm-4v-plus-0111']
 
+# 可用Florence2模型列表
+FLORENCE2_MODELS = [
+    'MiaoshouAI/Florence-2-large-PromptGen-v2.0',
+    'MiaoshouAI/Florence-2-base-PromptGen-v2.0',
+    'microsoft/Florence-2-large-ft',
+    'microsoft/Florence-2-base-ft',
+    'microsoft/Florence-2-large',
+    'microsoft/Florence-2-base',
+]
+
 def load_config():
     """加载配置文件"""
     if os.path.exists(DATA_FILE):
@@ -69,7 +99,8 @@ def load_config():
         'directories': [],
         'gemini_config': DEFAULT_GEMINI_CONFIG,
         'zhipu_translate_config': DEFAULT_ZHIPU_TRANSLATE_CONFIG,
-        'zhipu_label_config': DEFAULT_ZHIPU_LABEL_CONFIG
+        'zhipu_label_config': DEFAULT_ZHIPU_LABEL_CONFIG,
+        'florence2_config': DEFAULT_FLORENCE2_CONFIG
     }
 
 def save_config(config_data):
@@ -120,6 +151,19 @@ def save_zhipu_label_config(config_data):
     config = load_config()
     config['zhipu_label_config'] = config_data
     return save_config(config)
+
+def get_florence2_config():
+    """获取Florence2配置"""
+    config_data = load_config()
+    if 'florence2_config' in config_data:
+        return config_data['florence2_config']
+    return DEFAULT_FLORENCE2_CONFIG
+
+def save_florence2_config(florence2_config):
+    """保存Florence2配置"""
+    config_data = load_config()
+    config_data['florence2_config'] = florence2_config
+    return save_config(config_data)
 
 def update_directories(directories):
     """

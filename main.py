@@ -303,9 +303,9 @@ class ImageLabelAssistant(QMainWindow):
         QTimer.singleShot(0, set_splitter_sizes)
 
         # 添加Gemini配置按钮
-        self.gemini_config_btn = QPushButton("配置API")
-        self.gemini_config_btn.clicked.connect(lambda: self.show_gemini_config(0))
-        left_layout.addWidget(self.gemini_config_btn)
+        self.model_config_btn = QPushButton("配置模型")
+        self.model_config_btn.clicked.connect(lambda: self.show_model_config(0))
+        left_layout.addWidget(self.model_config_btn)
         
         main_splitter.addWidget(left_widget)
         
@@ -322,21 +322,23 @@ class ImageLabelAssistant(QMainWindow):
         # 模型选择下拉菜单
         model_selection_layout.addWidget(QLabel("模型:"))
         self.model_combo = QComboBox()
-        self.model_combo.addItems(["Gemini", "MiaoshouAI/Florence-2-large-PromptGen-v2.0", 
-                                  "MiaoshouAI/Florence-2-base-PromptGen-v2.0", 
-                                  "microsoft/Florence-2-large-ft", 
-                                  "microsoft/Florence-2-base-ft", 
-                                  "microsoft/Florence-2-large", 
-                                  "microsoft/Florence-2-base",
-                                  "智谱AI"])
-        self.model_combo.setCurrentIndex(1)  # 默认使用第一个Florence模型
+        self.model_combo.addItems([
+            "Gemini",
+            "Florence2",
+            "智谱AI"
+        ])
+        self.model_combo.setCurrentIndex(1)  # 默认使用Florence2
         self.model_combo.currentIndexChanged.connect(self.on_model_changed)
         model_selection_layout.addWidget(self.model_combo)
 
         button_layout.addLayout(model_selection_layout)
 
         # 按钮
-        self.label_all_btn = QPushButton("一键打标")
+        self.label_all_btn = QPushButton()
+        selected_model = self.model_combo.currentText()
+        if not selected_model:
+            selected_model = "Florence2"
+        self.label_all_btn.setText(f"一键打标 ({selected_model})")
         self.label_all_btn.clicked.connect(self.label_all_images)
         self.save_all_btn = QPushButton("一键保存")
         self.save_all_btn.clicked.connect(self.save_all_labels)
@@ -379,11 +381,11 @@ class ImageLabelAssistant(QMainWindow):
         main_splitter.addWidget(right_widget)
         main_splitter.setSizes([300, 900])
         
-    def show_gemini_config(self, tab_index=0):
-        """显示API配置对话框
+    def show_model_config(self, tab_index=0):
+        """显示模型配置对话框
         
         Args:
-            tab_index: 默认显示的选项卡索引，0为Gemini，1为智谱AI
+            tab_index: 默认显示的选项卡索引，0为Gemini，1为智谱AI，2为Florence2
         """
 
         
@@ -407,11 +409,13 @@ class ImageLabelAssistant(QMainWindow):
             new_gemini_config = config_dialog.get_gemini_config()
             new_zhipu_translate_config = config_dialog.get_zhipu_translate_config()
             new_zhipu_label_config = config_dialog.get_zhipu_label_config()
+            new_florence2_config = config_dialog.get_florence2_config()
             
             # 应用配置
             config.save_gemini_config(new_gemini_config)
             config.save_zhipu_translate_config(new_zhipu_translate_config)
             config.save_zhipu_label_config(new_zhipu_label_config)
+            config.save_florence2_config(new_florence2_config)
             
             # 显示确认消息
             QMessageBox.information(self, "配置成功", "模型配置已保存")
@@ -1013,62 +1017,47 @@ class ImageLabelAssistant(QMainWindow):
         # 现在仅作占位，所有内容修改逻辑已交由 TextEditDelegate 处理
         pass
 
-    def on_model_changed(self, current_index):
+    def on_model_changed(self):
         """模型选择变化时的回调函数"""
-        # 获取当前选择的模型索引和文本
         selected_model = self.model_combo.currentText()
-        
-        # 根据模型类型设置labeler配置
-        if current_index == 0:  # Gemini
+        if selected_model == "Gemini":
             # 检查是否配置Gemini API
             gemini_config = config.get_gemini_config()
             if not gemini_config.get('api_key'):
                 result = QMessageBox.question(
-                    self, 
-                    "API配置", 
+                    self,
+                    "API配置",
                     "您尚未配置Gemini API，无法使用Gemini打标功能。\n\n是否现在配置？",
                     QMessageBox.Yes | QMessageBox.No
                 )
-                
                 if result == QMessageBox.Yes:
                     self.show_gemini_config(0)  # 显示Gemini选项卡
                 else:
                     QMessageBox.information(self, "功能受限", "由于未配置Gemini API，打标功能将不可用。\n\n您随时可以通过左侧的'配置API'按钮进行配置。")
-                    # 切换到默认的Florence模型
                     self.model_combo.setCurrentIndex(1)
                     return
-            
-            # 设置打标服务类型为 Gemini
             self.labeler.labeler_type = LabelerType.GEMINI
-        elif selected_model == "智谱AI":  # 智谱多模态
+        elif selected_model == "Florence2":
+            self.labeler.labeler_type = LabelerType.FLORENCE2
+        elif selected_model == "智谱AI":
             # 检查是否配置智谱API
             zhipu_config = config.get_zhipu_label_config()
             if not zhipu_config.get('api_key'):
                 result = QMessageBox.question(
-                    self, 
-                    "API配置", 
+                    self,
+                    "API配置",
                     "您尚未配置智谱 API，无法使用智谱打标功能。\n\n是否现在配置？",
                     QMessageBox.Yes | QMessageBox.No
                 )
-                
                 if result == QMessageBox.Yes:
                     self.show_gemini_config(1)  # 显示智谱AI选项卡
                 else:
                     QMessageBox.information(self, "功能受限", "由于未配置智谱 API，打标功能将不可用。\n\n您随时可以通过左侧的'配置API'按钮进行配置。")
-                    # 切换到默认的Florence模型
                     self.model_combo.setCurrentIndex(1)
                     return
-            
-            # 设置打标服务类型为 智谱
             self.labeler.labeler_type = LabelerType.ZHIPU
-        else:  # Huggingface模型
-            # 设置打标服务类型为 huggingface
-            self.labeler.labeler_type = LabelerType.HUGGINGFACE
-            self.labeler.hf_model_id = selected_model
-            # 清空已加载的模型，以便重新加载所选模型
-            if self.labeler.hf_model is not None and self.labeler.hf_model.get("model_id") != selected_model:
-                self.labeler.hf_model = None
-        
+        # 统一设置一键打标按钮文本
+        self.label_all_btn.setText(f"一键打标 ({selected_model})")
         print(f"当前选择的模型: {selected_model}")
 
     def get_thumbnail(self, image_path):

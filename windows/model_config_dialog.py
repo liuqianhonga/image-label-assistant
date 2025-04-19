@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QWidget, QTabWidget, QHBoxLayout, QLabel, QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox, QPushButton, QGroupBox
+    QDialog, QVBoxLayout, QWidget, QTabWidget, QHBoxLayout, QLabel, QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox, QPushButton, QGroupBox, QCheckBox, QFormLayout
 )
 from PyQt5.QtCore import Qt
 import config
@@ -18,9 +18,11 @@ class ModelConfigDialog(QDialog):
         self.tabs = QTabWidget()
         self.gemini_tab = QWidget()
         self.zhipu_tab = QWidget()
+        self.florence2_tab = QWidget()
         
         self.tabs.addTab(self.gemini_tab, "Gemini配置")
         self.tabs.addTab(self.zhipu_tab, "智谱AI配置")
+        self.tabs.addTab(self.florence2_tab, "Florence2配置")
         
         self.layout.addWidget(self.tabs)
         
@@ -28,6 +30,7 @@ class ModelConfigDialog(QDialog):
         current_gemini_config = config.get_gemini_config()
         current_zhipu_translate_config = config.get_zhipu_translate_config()
         current_zhipu_label_config = config.get_zhipu_label_config()
+        current_florence2_config = config.get_florence2_config()
 
         # 如果没有提供当前配置，使用默认配置
         if not current_gemini_config:
@@ -39,11 +42,17 @@ class ModelConfigDialog(QDialog):
         if not current_zhipu_label_config: 
             current_zhipu_label_config = config.get_zhipu_label_config()
             
+        if not current_florence2_config:
+            current_florence2_config = config.get_florence2_config()
+            
         # 设置Gemini选项卡
         self.setup_gemini_tab(current_gemini_config)
         
         # 设置智谱AI选项卡
         self.setup_zhipu_tab(current_zhipu_translate_config, current_zhipu_label_config)
+        
+        # 设置Florence2选项卡
+        self.setup_florence2_tab(current_florence2_config)
         
         # 按钮
         buttons_layout = QHBoxLayout()
@@ -229,6 +238,58 @@ class ModelConfigDialog(QDialog):
         # 添加空白占位
         zhipu_layout.addStretch()
     
+    def setup_florence2_tab(self, current_config):
+        """设置Florence2选项卡（新版布局，参考智谱AI）"""
+        florence2_layout = QVBoxLayout(self.florence2_tab)
+        # Florence2配置组
+        config_group = QGroupBox("Florence2模型配置")
+        config_layout = QFormLayout(config_group)
+        # 模型选择
+        self.florence2_model_combo = QComboBox()
+        self.florence2_model_combo.addItems(config.FLORENCE2_MODELS)
+        if 'model' in current_config:
+            index = self.florence2_model_combo.findText(current_config['model'])
+            if index >= 0:
+                self.florence2_model_combo.setCurrentIndex(index)
+        config_layout.addRow(QLabel("模型："), self.florence2_model_combo)
+        # prompt选择
+        self.florence2_prompt_combo = QComboBox()
+        self.florence2_prompt_combo.addItems(config.FLORENCE2_PROMPT_OPTIONS)
+        if 'prompt' in current_config:
+            index = self.florence2_prompt_combo.findText(current_config['prompt'])
+            if index >= 0:
+                self.florence2_prompt_combo.setCurrentIndex(index)
+        config_layout.addRow(QLabel("提示词类型："), self.florence2_prompt_combo)
+        # max_new_tokens
+        self.florence2_max_new_tokens = QSpinBox()
+        self.florence2_max_new_tokens.setRange(1, 4096)
+        self.florence2_max_new_tokens.setValue(current_config.get('max_new_tokens', 1024))
+        config_layout.addRow(QLabel("最大新Token数："), self.florence2_max_new_tokens)
+        # temperature
+        self.florence2_temperature = QDoubleSpinBox()
+        self.florence2_temperature.setRange(0.0, 2.0)
+        self.florence2_temperature.setSingleStep(0.01)
+        self.florence2_temperature.setValue(current_config.get('temperature', 0.6))
+        config_layout.addRow(QLabel("温度(temperature)："), self.florence2_temperature)
+        # top_p
+        self.florence2_top_p = QDoubleSpinBox()
+        self.florence2_top_p.setRange(0.0, 1.0)
+        self.florence2_top_p.setSingleStep(0.01)
+        self.florence2_top_p.setValue(current_config.get('top_p', 0.9))
+        config_layout.addRow(QLabel("Top-p采样："), self.florence2_top_p)
+        # num_beams
+        self.florence2_num_beams = QSpinBox()
+        self.florence2_num_beams.setRange(1, 32)
+        self.florence2_num_beams.setValue(current_config.get('num_beams', 4))
+        config_layout.addRow(QLabel("束宽(num_beams)："), self.florence2_num_beams)
+        # do_sample
+        self.florence2_do_sample = QCheckBox("使用采样(do_sample)")
+        self.florence2_do_sample.setChecked(current_config.get('do_sample', True))
+        config_layout.addRow(self.florence2_do_sample)
+        config_group.setLayout(config_layout)
+        florence2_layout.addWidget(config_group)
+        florence2_layout.addStretch(1)
+
     def get_gemini_config(self):
         """获取Gemini配置"""
         return {
@@ -255,4 +316,16 @@ class ModelConfigDialog(QDialog):
             'model': self.zhipu_label_model.currentText(),
             'temperature': self.zhipu_label_temp.value(),
             'max_tokens': self.zhipu_label_max_tokens.value()
+        }
+    
+    def get_florence2_config(self):
+        """获取Florence2配置"""
+        return {
+            'model': self.florence2_model_combo.currentText(),
+            'prompt': self.florence2_prompt_combo.currentText(),
+            'max_new_tokens': self.florence2_max_new_tokens.value(),
+            'do_sample': self.florence2_do_sample.isChecked(),
+            'temperature': self.florence2_temperature.value(),
+            'num_beams': self.florence2_num_beams.value(),
+            'top_p': self.florence2_top_p.value(),
         }

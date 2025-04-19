@@ -17,15 +17,15 @@ from enum import Enum
 
 class LabelerType(Enum):
     GEMINI = "gemini"
+    FLORENCE2 = "florence2"
     ZHIPU = "zhipu"
-    HUGGINGFACE = "huggingface"
 
 class ImageLabeler:
     """图像标注类，用于处理图像识别和标注"""
     
     def __init__(self):
-        # 打标服务类型："gemini", "zhipu", "huggingface"
-        self.labeler_type = LabelerType.HUGGINGFACE  # 默认使用huggingface模型
+        # 打标服务类型："gemini", "zhipu", "florence2"
+        self.labeler_type = LabelerType.FLORENCE2  # 默认使用florence2模型
         
         # 模型实例缓存
         self.gemini_model = None  # Gemini模型实例
@@ -41,7 +41,7 @@ class ImageLabeler:
     def label_image(self, image_path, current_directory=None):
         """
         对图片进行标注，返回英文描述
-        根据 labeler_type 字段判断使用打标服务类型："gemini", "zhipu", "huggingface"
+        根据 labeler_type 字段判断使用打标服务类型："gemini", "zhipu", "florence2"
         
         参数：
             image_path: 图片路径
@@ -60,29 +60,23 @@ class ImageLabeler:
             print(f"使用智谱打标服务: {model}")
             return self.label_with_zhipu_v_model(image_path, current_directory)
         
-        # 3. 使用Huggingface本地模型打标
-        elif self.labeler_type == LabelerType.HUGGINGFACE:
-            print(f"使用Huggingface本地模型打标: {self.hf_model_id}")
+        # 3. 使用Florence2本地模型打标
+        elif self.labeler_type == LabelerType.FLORENCE2:
+            print(f"使用Florence2本地模型打标")
             try:
-                return self.label_with_hf_model(image_path)
+                return self.label_with_florence2_model(image_path)
             except Exception as e:
-                error_message = f"使用Huggingface模型标注图像时出错: {e}"
-                print(error_message)
-                import traceback
-                traceback.print_exc()
-                return {"description": error_message, "zh": ""}
+                print(f"Florence2模型打标出错: {e}")
+                return None
         
         # 默认情况（应该不会进入这里，但为了安全起见）
         else:
-            print(f"未知的打标服务类型: {self.labeler_type}，尝试使用Huggingface模型")
+            print(f"未知的打标服务类型: {self.labeler_type}，尝试使用Florence2模型")
             try:
-                return self.label_with_hf_model(image_path)
+                return self.label_with_florence2_model(image_path)
             except Exception as e:
-                error_message = f"使用Huggingface模型标注图像时出错: {e}"
-                print(error_message)
-                import traceback
-                traceback.print_exc()
-                return {"description": error_message, "zh": ""}
+                print(f"Florence2模型打标出错: {e}")
+                return None
     
     def label_with_gemini(self, image_path, current_directory=None):
         """使用Gemini模型对图片进行标注"""
@@ -294,18 +288,22 @@ class ImageLabeler:
             # 如果下载失败，返回原始model_id，让transformers自行处理
             return model_id
 
-    def label_with_hf_model(self, image_path):
-        """使用huggingface模型在本地对图片进行标注"""
-        
+    def label_with_florence2_model(self, image_path):
+        """使用Florence2模型在本地对图片进行标注"""
+        florence2_config = config.get_florence2_config()
+        model_id = florence2_config.get('model', 'MiaoshouAI/Florence-2-large-PromptGen-v2.0')
+        prompt = florence2_config.get('prompt', '<DETAILED_CAPTION>')
+        max_new_tokens = florence2_config.get('max_new_tokens', 1024)
+        do_sample = florence2_config.get('do_sample', True)
+        temperature = florence2_config.get('temperature', 0.6)
+        num_beams = florence2_config.get('num_beams', 4)
+        top_p = florence2_config.get('top_p', 0.9)
         try:
             # 正常打开图像文件
             image = Image.open(image_path)
             
             # 初始化模型和处理器
             if self.hf_model is None:
-                # 使用设置的模型ID
-                model_id = self.hf_model_id
-                
                 print(f"正在加载模型: {model_id}")
                 
                 # 设置设备并提供更多调试信息
@@ -350,17 +348,14 @@ class ImageLabeler:
             model_dtype = self.hf_model["dtype"]
             
             # 如果当前加载的模型ID与设置的模型ID不匹配，则需要重新加载模型
-            if self.hf_model.get("model_id") != self.hf_model_id:
-                print(f"模型ID已更改，从 {self.hf_model.get('model_id')} 切换到 {self.hf_model_id}")
+            if self.hf_model.get("model_id") != model_id:
+                print(f"模型ID已更改，从 {self.hf_model.get('model_id')} 切换到 {model_id}")
                 # 清空模型以强制重新加载
                 self.hf_model = None
                 # 递归调用自身以加载新模型
-                return self.label_with_hf_model(image_path)
+                return self.label_with_florence2_model(image_path)
             
-            # 准备提示词 - 使用配置中的提示词
-            prompt = "<MORE_DETAILED_CAPTION>"
-            
-            # 处理图像和文本
+            # 准备提示词 - 使用配置中的prompt
             inputs = processor(text=prompt, images=image, return_tensors="pt", do_rescale=False).to(model_dtype).to(device)
             
             print("开始生成描述...")
@@ -369,11 +364,11 @@ class ImageLabeler:
                 generated_ids = model.generate(
                     input_ids=inputs["input_ids"],
                     pixel_values=inputs["pixel_values"],
-                    max_new_tokens=1024,
-                    do_sample=True,
-                    temperature=0.6,
-                    num_beams=4,
-                    top_p=0.9,
+                    max_new_tokens=max_new_tokens,
+                    do_sample=do_sample,
+                    temperature=temperature,
+                    num_beams=num_beams,
+                    top_p=top_p,
                 )
 
             # 解码生成的文本
@@ -412,7 +407,7 @@ class ImageLabeler:
             return result
         
         except Exception as e:
-            error_message = f"使用Huggingface模型标注图像时出错: {e}"
+            error_message = f"Florence2模型标注图像时出错: {e}"
             print(error_message)
             import traceback
             traceback.print_exc()
