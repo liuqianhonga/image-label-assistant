@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (
     QLabel, QStyledItemDelegate, QDesktopWidget, QTextEdit, QAbstractItemView, QComboBox, QDoubleSpinBox, QSpinBox,
     QTabWidget, QRadioButton, QButtonGroup, QGroupBox, QFormLayout, QDialog
 )
-from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal
+from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QPixmap, QIcon
 from image_labeler import ImageLabeler, LabelerType
 from utils import translate_text
@@ -243,13 +243,14 @@ class ImageLabelAssistant(QMainWindow):
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         
-        # 添加目录的输入框和按钮
+        # 添加目录的输入框和按钮（应放在最顶部）
         input_layout = QHBoxLayout()
-        self.dir_input = QLineEdit()
-        self.dir_input.setPlaceholderText("点击选择按钮添加数据集目录")
+        # 改为提示Label，不可编辑
+        self.dir_input = QLabel("点击‘选择’按钮添加数据集目录")
+        self.dir_input.setStyleSheet("color: #888; padding-left: 4px;")
+        input_layout.addWidget(self.dir_input)
         self.browse_btn = QPushButton("选择")
         self.browse_btn.clicked.connect(self.browse_directory)
-        input_layout.addWidget(self.dir_input)
         input_layout.addWidget(self.browse_btn)
         # 删除目录按钮移到这里，并设置为红色
         self.remove_btn = QPushButton("删除")
@@ -258,38 +259,49 @@ class ImageLabelAssistant(QMainWindow):
         input_layout.addWidget(self.remove_btn)
         left_layout.addLayout(input_layout)
 
-        # 数据集列表
+        # 数据集列表（必须先定义）
         self.dir_list = QListWidget()
         self.dir_list.clicked.connect(self.on_directory_clicked)
-        left_layout.addWidget(self.dir_list)
-
-        # 触发词输入框区域（严格移动到数据集目录列表下方）
+        # 触发词和提示词区域合并为整体
+        trigger_prompt_widget = QWidget()
+        trigger_prompt_layout = QVBoxLayout(trigger_prompt_widget)
+        trigger_prompt_layout.setContentsMargins(0, 0, 0, 0)
+        # 触发词输入框区域
         trigger_layout = QHBoxLayout()
         trigger_label = QLabel("触发词:")
         self.trigger_input = QLineEdit()
         self.trigger_input.setPlaceholderText("自动提取或手动输入触发词")
-        self.trigger_input.setMinimumWidth(200)
         trigger_layout.addWidget(trigger_label)
         trigger_layout.addWidget(self.trigger_input)
-        left_layout.addLayout(trigger_layout)
-
-        # 为当前选中数据集添加提示词配置区域
+        trigger_layout.setContentsMargins(0, 10, 0, 0)  # 上下各留10像素
+        trigger_prompt_layout.addLayout(trigger_layout)
+        # 数据集提示词配置区域
         prompt_group = QGroupBox("当前数据集提示词配置")
         prompt_layout = QVBoxLayout(prompt_group)
-
-        # 提示词输入框
         self.prompt_input = QTextEdit()
         self.prompt_input.setPlaceholderText("输入当前数据集的提示词配置")
         self.prompt_input.setMinimumHeight(100)
         prompt_layout.addWidget(self.prompt_input)
-
-        # 保存提示词按钮
         self.save_prompt_btn = QPushButton("保存提示词配置")
         self.save_prompt_btn.clicked.connect(self.save_directory_prompt)
         prompt_layout.addWidget(self.save_prompt_btn)
+        trigger_prompt_layout.addWidget(prompt_group)
+        trigger_prompt_layout.setStretch(0, 0)
+        trigger_prompt_layout.setStretch(1, 1)
+        # splitter分隔目录和触发词+提示词整体
+        dir_trigger_splitter = QSplitter(Qt.Vertical)
+        dir_trigger_splitter.addWidget(self.dir_list)
+        dir_trigger_splitter.addWidget(trigger_prompt_widget)
+        left_layout.addWidget(dir_trigger_splitter)
 
-        left_layout.addWidget(prompt_group)
-        
+        # 设置分割条初始高度，上方60%，下方40%
+        def set_splitter_sizes():
+            total = dir_trigger_splitter.height()
+            if total < 100:
+                total = 400  # 防止窗口尚未显示时高度为0
+            dir_trigger_splitter.setSizes([int(total * 0.6), int(total * 0.4)])
+        QTimer.singleShot(0, set_splitter_sizes)
+
         # 添加Gemini配置按钮
         self.gemini_config_btn = QPushButton("配置API")
         self.gemini_config_btn.clicked.connect(lambda: self.show_gemini_config(0))
@@ -322,9 +334,6 @@ class ImageLabelAssistant(QMainWindow):
         model_selection_layout.addWidget(self.model_combo)
 
         button_layout.addLayout(model_selection_layout)
-
-        # 移除右侧表格上方的触发词输入框（原有相关代码全部删除）
-        # 触发词输入框已由左侧唯一一处负责
 
         # 按钮
         self.label_all_btn = QPushButton("一键打标")
@@ -442,31 +451,21 @@ class ImageLabelAssistant(QMainWindow):
         """打开文件对话框选择目录，并直接添加到列表"""
         directory = QFileDialog.getExistingDirectory(self, "选择图像目录")
         if directory:
-            # 直接设置到输入框
-            self.dir_input.setText(directory)
-            
+            # 只做提示Label，不再 setText
             # 检查目录是否有效
             if not os.path.isdir(directory):
                 QMessageBox.warning(self, "警告", "所选路径不是有效的目录")
                 return
-                
             # 检查是否已存在于列表中
             for i in range(self.dir_list.count()):
                 if self.dir_list.item(i).text() == directory:
-                    # 如果已存在，则直接选中该项
                     self.dir_list.setCurrentRow(i)
                     QMessageBox.information(self, "提示", "该目录已在列表中")
                     return
-                    
             # 直接添加到列表
             self.dir_list.addItem(directory)
-            # 选中新添加的项
             self.dir_list.setCurrentRow(self.dir_list.count() - 1)
-            
-            # 保存目录列表
             self.save_data()
-            
-            # 自动加载所选目录的图像
             self.on_directory_clicked(None)
     
     def remove_directory(self):
