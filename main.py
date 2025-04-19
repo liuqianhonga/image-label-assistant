@@ -80,11 +80,18 @@ class TextEditDelegate(QStyledItemDelegate):
             
     def setModelData(self, editor, model, index):
         model.setData(index, editor.toPlainText(), Qt.EditRole)
-        
+        # 仅在英文打标列被编辑时设置内容修改
+        # 递归查找父级窗口，直到找到 ImageLabelAssistant 实例
+        widget = model.parent()
+        while widget is not None:
+            if widget.metaObject().className() == 'ImageLabelAssistant':
+                widget.content_modified = True
+                break
+            widget = widget.parent()
+            
     def updateEditorGeometry(self, editor, option, index):
-        # 确保编辑器覆盖整个单元格
         editor.setGeometry(option.rect)
-
+        
 class ImageDelegate(QStyledItemDelegate):
     """自定义委托，用于在表格中显示自适应大小的图片"""
     
@@ -341,32 +348,25 @@ class ImageLabelAssistant(QMainWindow):
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        
         # 设置可编辑模式
         self.table.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
-        
         # 连接表格修改信号
         self.table.itemChanged.connect(self.on_table_item_changed)
-        
         # 设置委托
         self.image_delegate = ImageDelegate(self)
         self.table.setItemDelegateForColumn(0, self.image_delegate)
-        
         # 设置文本编辑委托，仅英文打标使用多行编辑
         self.text_delegate = TextEditDelegate()
         self.table.setItemDelegateForColumn(1, self.text_delegate)  # 英文打标使用多行编辑
-        
         # 设置默认行高
         self.table.verticalHeader().setDefaultSectionSize(200)
-        
         # 设置行高可以手动调整
         self.table.verticalHeader().setSectionResizeMode(QHeaderView.Interactive)
-        
         # 绑定双击信号
         self.table.cellDoubleClicked.connect(self.on_table_cell_double_clicked)
-        
+        # 懒加载支持：滚动时动态加载可见区域的内容
+        self.table.viewport().installEventFilter(self)
         right_layout.addWidget(self.table)
-        
         main_splitter.addWidget(right_widget)
         main_splitter.setSizes([300, 900])
         
@@ -587,70 +587,81 @@ class ImageLabelAssistant(QMainWindow):
         self.update_table()
         
     def update_table(self):
-        """更新图像表格内容"""
-        # 临时断开信号连接，避免触发修改标记
+        """更新图像表格内容（支持懒加载）"""
         try:
             self.table.itemChanged.disconnect(self.on_table_item_changed)
         except Exception:
-            # 可能尚未连接信号
             pass
-            
         self.table.setRowCount(len(self.image_files))
-        
         for i, image_path in enumerate(self.image_files):
-            # 图像缩略图
+            # 只创建空的 QTableWidgetItem，实际缩略图数据懒加载
             try:
                 item = QTableWidgetItem()
-                item.setData(Qt.UserRole, image_path)  # 存储图像路径，委托会使用这个路径
-                item.setFlags(item.flags() & ~Qt.ItemIsEditable)  # 图像项不可编辑
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 self.table.setItem(i, 0, item)
-                
-                # 检查同名的txt文件
                 txt_file_path = os.path.splitext(image_path)[0] + ".txt"
                 en_label = ""
-                
                 if os.path.exists(txt_file_path):
                     try:
                         with open(txt_file_path, 'r', encoding='utf-8') as f:
-                            # 读取整个文件内容作为英文标签
                             en_label = f.read().strip()
                     except Exception as e:
                         print(f"读取标签文件出错: {e}")
-                
-                # 设置英文标签
                 if en_label:
                     item = QTableWidgetItem(en_label)
-                    item.setFlags(item.flags() | Qt.ItemIsEditable)  # 确保可以编辑
+                    item.setFlags(item.flags() | Qt.ItemIsEditable)
                     self.table.setItem(i, 1, item)
                 else:
-                    # 创建空的可编辑项
                     item = QTableWidgetItem("")
                     item.setFlags(item.flags() | Qt.ItemIsEditable)
                     self.table.setItem(i, 1, item)
-                
-                # 创建中文翻译项（不可编辑）
                 item = QTableWidgetItem("")
-                item.setFlags(item.flags() & ~Qt.ItemIsEditable)  # 设置为不可编辑
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 self.table.setItem(i, 2, item)
-                
-                # 创建翻译按钮
                 translate_button = QPushButton("翻译")
                 translate_button.clicked.connect(lambda _, row=i: self.translate_label(row))
                 self.table.setCellWidget(i, 3, translate_button)
-                
-                # 创建标记按钮
                 label_button = QPushButton("打标")
                 label_button.clicked.connect(lambda _, row=i: self.label_image(row))
                 self.table.setCellWidget(i, 4, label_button)
             except Exception as e:
                 print(f"加载图像出错: {e}")
-            
-        # 恢复信号连接
-        self.table.itemChanged.connect(self.on_table_item_changed)
-        
-        # 重置修改状态
         self.content_modified = False
+        self.table.itemChanged.connect(self.on_table_item_changed)
+        # 懒加载首次触发
+        self.lazy_load_table_images()
     
+    def eventFilter(self, obj, event):
+        # 针对表格的懒加载优化
+        if obj == self.table.viewport():
+            from PyQt5.QtCore import QEvent
+            if event.type() in (QEvent.Paint, QEvent.Resize, QEvent.Wheel, QEvent.Scroll):
+                self.lazy_load_table_images()
+        return super().eventFilter(obj, event)
+
+    def lazy_load_table_images(self):
+        # 只加载当前可见区域的图像缩略图，提升大数据集性能
+        visible_rows = self.get_visible_rows()
+        for row in visible_rows:
+            item = self.table.item(row, 0)
+            if item and not item.data(Qt.UserRole):
+                # 只在未加载过缩略图时加载
+                image_path = self.image_files[row]
+                item.setData(Qt.UserRole, image_path)
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+        # 强制刷新可见区域
+        self.table.viewport().update()
+
+    def get_visible_rows(self):
+        # 获取表格当前可见的行索引
+        viewport = self.table.viewport()
+        rect = viewport.rect()
+        first = self.table.rowAt(rect.top())
+        last = self.table.rowAt(rect.bottom())
+        if last == -1:
+            last = self.table.rowCount() - 1
+        return range(max(0, first), min(self.table.rowCount(), last + 1))
+
     def label_image(self, row):
         """标注单个图像"""
         # 如果使用非Gemini和非智谱AI的模型，显示加载提示
@@ -1000,9 +1011,8 @@ class ImageLabelAssistant(QMainWindow):
         QMessageBox.information(self, "保存成功", f"已成功保存 {saved_count} 个标签文件")
 
     def on_table_item_changed(self, item):
-        """表格内容变化时的回调函数"""
-        # 标记内容已被修改
-        self.content_modified = True
+        # 现在仅作占位，所有内容修改逻辑已交由 TextEditDelegate 处理
+        pass
 
     def on_model_changed(self, current_index):
         """模型选择变化时的回调函数"""
