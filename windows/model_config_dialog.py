@@ -8,7 +8,7 @@ class ModelConfigDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("API配置")
-        self.setMinimumWidth(600)
+        self.setMinimumWidth(800)
         self.layout = QVBoxLayout(self)
         
         # 设置对话框居中显示
@@ -111,13 +111,6 @@ class ModelConfigDialog(QDialog):
         
         # 添加配置组到主布局
         gemini_layout.addWidget(config_group)
-        
-        # 添加说明文字
-        note_label = QLabel("注意: 提示词配置已移动到目录管理中，每个目录可以设置不同的提示词")
-        note_label.setStyleSheet("color: #666; font-style: italic;")
-        note_label.setWordWrap(True)  # 允许文本换行
-        note_label.setContentsMargins(10, 10, 10, 10)  # 添加内边距
-        gemini_layout.addWidget(note_label)
         
         # 添加弹性空间
         gemini_layout.addStretch(1)
