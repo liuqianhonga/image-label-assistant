@@ -32,10 +32,10 @@ DEFAULT_GEMINI_CONFIG = {
     'max_output_tokens': 2048
 }
 
-# 默认智谱AI翻译配置
-DEFAULT_ZHIPU_TRANSLATE_CONFIG = {
+# 默认智谱AI语言模型配置
+DEFAULT_ZHIPU_LLM_CONFIG = {
     'api_key': '',
-    'model': 'glm-4-flash-250414',  # 文本翻译模型
+    'model': 'glm-4-flash-250414', 
     'temperature': 0.7,
     'max_tokens': 2048
 }
@@ -98,7 +98,7 @@ def load_config():
     return {
         'directories': [],
         'gemini_config': DEFAULT_GEMINI_CONFIG,
-        'zhipu_translate_config': DEFAULT_ZHIPU_TRANSLATE_CONFIG,
+        'zhipu_llm_config': DEFAULT_ZHIPU_LLM_CONFIG,
         'zhipu_label_config': DEFAULT_ZHIPU_LABEL_CONFIG,
         'florence2_config': DEFAULT_FLORENCE2_CONFIG
     }
@@ -126,17 +126,17 @@ def save_gemini_config(gemini_config):
     config['gemini_config'] = gemini_config
     return save_config(config)
 
-def get_zhipu_translate_config():
-    """获取智谱AI翻译配置"""
+def get_zhipu_llm_config():
+    """获取智谱AI语言模型配置"""
     config = load_config()
-    if 'zhipu_translate_config' in config:
-        return config['zhipu_translate_config']
-    return DEFAULT_ZHIPU_TRANSLATE_CONFIG
+    if 'zhipu_llm_config' in config:
+        return config['zhipu_llm_config']
+    return DEFAULT_ZHIPU_LLM_CONFIG
 
-def save_zhipu_translate_config(config_data):
-    """保存智谱AI翻译配置"""
+def save_zhipu_llm_config(config_data):
+    """保存智谱AI语言模型配置"""
     config = load_config()
-    config['zhipu_translate_config'] = config_data
+    config['zhipu_llm_config'] = config_data
     return save_config(config)
 
 def get_zhipu_label_config():

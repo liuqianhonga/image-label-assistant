@@ -382,13 +382,7 @@ class ImageLabelAssistant(QMainWindow):
         main_splitter.setSizes([300, 900])
         
     def show_model_config(self, tab_index=0):
-        """显示模型配置对话框
-        
-        Args:
-            tab_index: 默认显示的选项卡索引，0为Gemini，1为智谱AI，2为Florence2
-        """
-
-        
+        """显示模型配置对话框"""
         # 创建并显示配置对话框
         config_dialog = ModelConfigDialog(self)
         
@@ -404,21 +398,8 @@ class ImageLabelAssistant(QMainWindow):
         config_dialog.move(frameGm.topLeft())
         config_dialog.hide()
         
-        if config_dialog.exec_() == QDialog.Accepted:
-            # 获取新配置
-            new_gemini_config = config_dialog.get_gemini_config()
-            new_zhipu_translate_config = config_dialog.get_zhipu_translate_config()
-            new_zhipu_label_config = config_dialog.get_zhipu_label_config()
-            new_florence2_config = config_dialog.get_florence2_config()
-            
-            # 应用配置
-            config.save_gemini_config(new_gemini_config)
-            config.save_zhipu_translate_config(new_zhipu_translate_config)
-            config.save_zhipu_label_config(new_zhipu_label_config)
-            config.save_florence2_config(new_florence2_config)
-            
-            # 显示确认消息
-            QMessageBox.information(self, "配置成功", "模型配置已保存")
+        # 显示对话框
+        config_dialog.exec_()
     
     def load_data(self):
         """从配置模块加载保存的目录列表和配置"""
@@ -1031,7 +1012,7 @@ class ImageLabelAssistant(QMainWindow):
                     QMessageBox.Yes | QMessageBox.No
                 )
                 if result == QMessageBox.Yes:
-                    self.show_gemini_config(0)  # 显示Gemini选项卡
+                    self.show_model_config(0)  # 显示Gemini选项卡
                 else:
                     QMessageBox.information(self, "功能受限", "由于未配置Gemini API，打标功能将不可用。\n\n您随时可以通过左侧的'配置API'按钮进行配置。")
                     self.model_combo.setCurrentIndex(1)
@@ -1050,7 +1031,7 @@ class ImageLabelAssistant(QMainWindow):
                     QMessageBox.Yes | QMessageBox.No
                 )
                 if result == QMessageBox.Yes:
-                    self.show_gemini_config(1)  # 显示智谱AI选项卡
+                    self.show_model_config(1)  # 显示智谱AI选项卡
                 else:
                     QMessageBox.information(self, "功能受限", "由于未配置智谱 API，打标功能将不可用。\n\n您随时可以通过左侧的'配置API'按钮进行配置。")
                     self.model_combo.setCurrentIndex(1)

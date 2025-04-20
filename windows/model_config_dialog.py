@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QWidget, QTabWidget, QHBoxLayout, QLabel, QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox, QPushButton, QGroupBox, QCheckBox, QFormLayout
+    QDialog, QVBoxLayout, QWidget, QTabWidget, QHBoxLayout, QLabel, QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox, QPushButton, QGroupBox, QCheckBox, QFormLayout, QMessageBox
 )
 from PyQt5.QtCore import Qt
 import config
@@ -27,39 +27,39 @@ class ModelConfigDialog(QDialog):
         self.layout.addWidget(self.tabs)
         
         # 获取当前配置
-        current_gemini_config = config.get_gemini_config()
-        current_zhipu_translate_config = config.get_zhipu_translate_config()
-        current_zhipu_label_config = config.get_zhipu_label_config()
-        current_florence2_config = config.get_florence2_config()
+        self.gemini_config = config.get_gemini_config()
+        self.zhipu_llm_config = config.get_zhipu_llm_config()
+        self.zhipu_label_config = config.get_zhipu_label_config()
+        self.florence2_config = config.get_florence2_config()
 
         # 如果没有提供当前配置，使用默认配置
-        if not current_gemini_config:
-            current_gemini_config = config.DEFAULT_GEMINI_CONFIG
+        if not self.gemini_config:
+            self.gemini_config = config.DEFAULT_GEMINI_CONFIG
             
-        if not current_zhipu_translate_config:
-            current_zhipu_translate_config = config.get_zhipu_translate_config()
+        if not self.zhipu_llm_config:
+            self.zhipu_llm_config = config.get_zhipu_llm_config()
         
-        if not current_zhipu_label_config: 
-            current_zhipu_label_config = config.get_zhipu_label_config()
+        if not self.zhipu_label_config: 
+            self.zhipu_label_config = config.get_zhipu_label_config()
             
-        if not current_florence2_config:
-            current_florence2_config = config.get_florence2_config()
+        if not self.florence2_config:
+            self.florence2_config = config.get_florence2_config()
             
         # 设置Gemini选项卡
-        self.setup_gemini_tab(current_gemini_config)
+        self.setup_gemini_tab(self.gemini_config)
         
         # 设置智谱AI选项卡
-        self.setup_zhipu_tab(current_zhipu_translate_config, current_zhipu_label_config)
+        self.setup_zhipu_tab(self.zhipu_llm_config, self.zhipu_label_config)
         
         # 设置Florence2选项卡
-        self.setup_florence2_tab(current_florence2_config)
+        self.setup_florence2_tab(self.florence2_config)
         
         # 按钮
         buttons_layout = QHBoxLayout()
         self.cancel_btn = QPushButton("取消")
         self.cancel_btn.clicked.connect(self.reject)
         self.save_btn = QPushButton("保存")
-        self.save_btn.clicked.connect(self.accept)
+        self.save_btn.clicked.connect(self.save_config)
         buttons_layout.addWidget(self.cancel_btn)
         buttons_layout.addWidget(self.save_btn)
         self.layout.addLayout(buttons_layout)
@@ -124,7 +124,7 @@ class ModelConfigDialog(QDialog):
         # 添加弹性空间
         gemini_layout.addStretch(1)
         
-    def setup_zhipu_tab(self, current_translate_config, current_label_config):
+    def setup_zhipu_tab(self, current_llm_config, current_label_config):
         """设置智谱AI选项卡"""
         zhipu_layout = QVBoxLayout(self.zhipu_tab)
         
@@ -133,48 +133,48 @@ class ModelConfigDialog(QDialog):
         api_key_label = QLabel("API密钥:")
         self.zhipu_api_key_input = QLineEdit()
         self.zhipu_api_key_input.setPlaceholderText("输入智谱GLM API密钥")
-        self.zhipu_api_key_input.setText(current_translate_config.get('api_key', ''))
+        self.zhipu_api_key_input.setText(current_llm_config.get('api_key', ''))
         api_key_layout.addWidget(api_key_label)
         api_key_layout.addWidget(self.zhipu_api_key_input)
         zhipu_layout.addLayout(api_key_layout)
         
-        # 翻译配置区域
-        translate_group = QGroupBox("翻译配置")
-        translate_layout = QVBoxLayout(translate_group)
+        # 语言模型配置区域
+        llm_group = QGroupBox("语言模型配置")
+        llm_layout = QVBoxLayout(llm_group)
         
         # 模型选择
         model_layout = QHBoxLayout()
         model_label = QLabel("模型:")
-        self.zhipu_translate_model = QComboBox()
-        self.zhipu_translate_model.addItems(config.GLM_TRANSLATE_MODELS)
-        self.zhipu_translate_model.setCurrentText(current_translate_config.get('model', 'glm-4-flash-250414'))
+        self.zhipu_llm_model = QComboBox()
+        self.zhipu_llm_model.addItems(config.GLM_MODELS)
+        self.zhipu_llm_model.setCurrentText(current_llm_config.get('model', 'glm-4-flash-250414'))
         model_layout.addWidget(model_label)
-        model_layout.addWidget(self.zhipu_translate_model)
-        translate_layout.addLayout(model_layout)
+        model_layout.addWidget(self.zhipu_llm_model)
+        llm_layout.addLayout(model_layout)
         
         # 温度设置
         temp_layout = QHBoxLayout()
         temp_label = QLabel("温度:")
-        self.zhipu_translate_temp = QDoubleSpinBox()
-        self.zhipu_translate_temp.setRange(0.0, 2.0)
-        self.zhipu_translate_temp.setSingleStep(0.1)
-        self.zhipu_translate_temp.setValue(current_translate_config.get('temperature', 0.7))
+        self.zhipu_llm_temp = QDoubleSpinBox()
+        self.zhipu_llm_temp.setRange(0.0, 2.0)
+        self.zhipu_llm_temp.setSingleStep(0.1)
+        self.zhipu_llm_temp.setValue(current_llm_config.get('temperature', 0.7))
         temp_layout.addWidget(temp_label)
-        temp_layout.addWidget(self.zhipu_translate_temp)
-        translate_layout.addLayout(temp_layout)
+        temp_layout.addWidget(self.zhipu_llm_temp)
+        llm_layout.addLayout(temp_layout)
         
         # 最大输出长度
         max_tokens_layout = QHBoxLayout()
         max_tokens_label = QLabel("最大输出长度:")
-        self.zhipu_translate_max_tokens = QSpinBox()
-        self.zhipu_translate_max_tokens.setRange(10, 8192)
-        self.zhipu_translate_max_tokens.setSingleStep(100)
-        self.zhipu_translate_max_tokens.setValue(current_translate_config.get('max_tokens', 2048))
+        self.zhipu_llm_max_tokens = QSpinBox()
+        self.zhipu_llm_max_tokens.setRange(10, 8192)
+        self.zhipu_llm_max_tokens.setSingleStep(100)
+        self.zhipu_llm_max_tokens.setValue(current_llm_config.get('max_tokens', 2048))
         max_tokens_layout.addWidget(max_tokens_label)
-        max_tokens_layout.addWidget(self.zhipu_translate_max_tokens)
-        translate_layout.addLayout(max_tokens_layout)
+        max_tokens_layout.addWidget(self.zhipu_llm_max_tokens)
+        llm_layout.addLayout(max_tokens_layout)
         
-        zhipu_layout.addWidget(translate_group)
+        zhipu_layout.addWidget(llm_group)
         
         # 打标配置区域
         label_group = QGroupBox("打标配置")
@@ -218,10 +218,10 @@ class ModelConfigDialog(QDialog):
         features_group_box = QGroupBox("功能说明")
         features_layout = QVBoxLayout(features_group_box)
         
-        # 翻译功能说明
-        translate_label = QLabel("• 翻译：系统使用智谱AI进行高质量翻译，自动将英文标签翻译为中文。")
-        translate_label.setWordWrap(True)
-        features_layout.addWidget(translate_label)
+        # 语言模型功能说明
+        llm_label = QLabel("• 语言模型：系统使用智谱AI进行高质量文本生成。")
+        llm_label.setWordWrap(True)
+        features_layout.addWidget(llm_label)
         
         # 未来可能的功能说明
         future_label = QLabel("• 其它：智谱AI还可用于多种自然语言处理任务，后续版本可能增加更多功能。")
@@ -300,13 +300,13 @@ class ModelConfigDialog(QDialog):
             # prompt字段已移除，现在与目录一起配置
         }
     
-    def get_zhipu_translate_config(self):
-        """获取智谱AI翻译配置"""
+    def get_zhipu_llm_config(self):
+        """获取智谱AI语言模型配置"""
         return {
             'api_key': self.zhipu_api_key_input.text().strip(),
-            'model': self.zhipu_translate_model.currentText(),
-            'temperature': self.zhipu_translate_temp.value(),
-            'max_tokens': self.zhipu_translate_max_tokens.value()
+            'model': self.zhipu_llm_model.currentText(),
+            'temperature': self.zhipu_llm_temp.value(),
+            'max_tokens': self.zhipu_llm_max_tokens.value()
         }
         
     def get_zhipu_label_config(self):
@@ -329,3 +329,23 @@ class ModelConfigDialog(QDialog):
             'num_beams': self.florence2_num_beams.value(),
             'top_p': self.florence2_top_p.value(),
         }
+    
+    def save_config(self):
+        """保存所有配置"""
+        # 保存Gemini配置
+        gemini_config = self.get_gemini_config()
+        config.save_gemini_config(gemini_config)
+        
+        # 保存智谱AI配置
+        zhipu_llm_config = self.get_zhipu_llm_config()
+        config.save_zhipu_llm_config(zhipu_llm_config)
+        
+        zhipu_label_config = self.get_zhipu_label_config()
+        config.save_zhipu_label_config(zhipu_label_config)
+        
+        # 保存Florence2配置
+        florence2_config = self.get_florence2_config()
+        config.save_florence2_config(florence2_config)
+        
+        QMessageBox.information(self, "成功", "配置已保存")
+        self.close()
