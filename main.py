@@ -216,24 +216,11 @@ class ImageLabelAssistant(QMainWindow):
         # 加载保存的目录列表和配置
         self.load_data()
         
-        # 全屏显示窗口
+        # 全屏显示
         self.showMaximized()
-            
-    def center_on_screen(self):
-        """将窗口居中显示在屏幕上"""
-        screen_geometry = QDesktopWidget().availableGeometry()
-        window_geometry = self.geometry()
-        
-        # 计算居中位置
-        x = (screen_geometry.width() - window_geometry.width()) // 2
-        y = (screen_geometry.height() - window_geometry.height()) // 2
-        
-        # 移动窗口到居中位置
-        self.move(x, y)
         
     def init_ui(self):
-        self.setWindowTitle("图像打标助手")
-        self.setGeometry(100, 100, 1200, 800)
+        self.setWindowTitle("图像打标助手 by liuqianhong")
         
         # 创建主分割器
         main_splitter = QSplitter(Qt.Horizontal)
@@ -259,7 +246,7 @@ class ImageLabelAssistant(QMainWindow):
         input_layout.addWidget(self.remove_btn)
         left_layout.addLayout(input_layout)
 
-        # 数据集列表（必须先定义）
+        # 数据集列表
         self.dir_list = QListWidget()
         self.dir_list.clicked.connect(self.on_directory_clicked)
         # 触发词和提示词区域合并为整体
@@ -379,7 +366,6 @@ class ImageLabelAssistant(QMainWindow):
         self.table.viewport().installEventFilter(self)
         right_layout.addWidget(self.table)
         main_splitter.addWidget(right_widget)
-        main_splitter.setSizes([300, 900])
         
     def show_model_config(self, tab_index=0):
         """显示模型配置对话框"""
@@ -470,10 +456,11 @@ class ImageLabelAssistant(QMainWindow):
                 return
                 
             self.dir_list.takeItem(self.dir_list.row(current_item))
-            # 如果删除的是当前正在显示的目录，则清空图像表格
+            # 如果删除的是当前正在显示的目录，则清空图像表格和缩略图缓存
             if current_item.text() == self.current_path:
                 self.current_path = ""
                 self.image_files = []
+                self.thumbnail_cache.clear()
                 self.update_table()
                 
             # 保存目录列表到配置模块
@@ -517,6 +504,9 @@ class ImageLabelAssistant(QMainWindow):
             )
             if result != QMessageBox.Yes:
                 return
+
+        # 清理缩略图缓存
+        self.thumbnail_cache.clear()
 
         # 切换目录并重置修改状态
         self.current_path = selected_dir
