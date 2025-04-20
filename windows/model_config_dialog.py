@@ -146,7 +146,7 @@ class ModelConfigDialog(QDialog):
         model_layout = QHBoxLayout()
         model_label = QLabel("模型:")
         self.zhipu_llm_model = QComboBox()
-        self.zhipu_llm_model.addItems(config.GLM_MODELS)
+        self.zhipu_llm_model.addItems(config.GLM_LLM_MODELS)
         self.zhipu_llm_model.setCurrentText(current_llm_config.get('model', 'glm-4-flash-250414'))
         model_layout.addWidget(model_label)
         model_layout.addWidget(self.zhipu_llm_model)

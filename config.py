@@ -76,8 +76,9 @@ GEMINI_MODELS = [
     "gemini-1.5-pro"
 ]
 
-# 可用的GLM模型列表 - 分别用于翻译和打标
-GLM_TRANSLATE_MODELS = ['glm-4-flash-250414']
+# 可用的GLM模型列表
+GLM_LLM_MODELS = ['glm-4-flash-250414']
+# 可用的GLM打标模型列表
 GLM_LABEL_MODELS = ['glm-4v-plus-0111']
 
 # 可用Florence2模型列表
