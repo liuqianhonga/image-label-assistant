@@ -35,7 +35,7 @@
 
 ## 安装方法
 
-1. 确保已安装Python 3.11或更高版本
+1. 确保已安装Python 3.12
 2. 克隆或下载本仓库
 3. 安装uv工具（如果尚未安装）：
 
@@ -50,7 +50,7 @@ curl -sSf https://astral.sh/uv/install.sh | sh
 
 ```bash
 # 创建并初始化虚拟环境
-uv venv
+uv venv --python=3.12
 # 激活虚拟环境（Windows）
 .\.venv\Scripts\activate
 # 激活虚拟环境（Linux/macOS）
@@ -181,7 +181,7 @@ python main.py
 
 ## 技术特性
 
-- 使用PyQt5构建图形界面
+- 使用PyQt6构建图形界面
 - 多线程处理图像标注和翻译，避免界面冻结
 - 支持在线API和本地模型的混合使用
 - 使用Google Gemini API进行在线图像标注

@@ -1,14 +1,14 @@
 import sys
 import os
 import json
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QSplitter, QListWidget, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QLineEdit, QHeaderView, QFileDialog, QMessageBox,
-    QLabel, QStyledItemDelegate, QDesktopWidget, QTextEdit, QAbstractItemView, QComboBox, QDoubleSpinBox, QSpinBox,
+    QLabel, QStyledItemDelegate, QTextEdit, QAbstractItemView, QComboBox, QDoubleSpinBox, QSpinBox,
     QTabWidget, QRadioButton, QButtonGroup, QGroupBox, QFormLayout, QDialog
 )
-from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal, QTimer
-from PyQt5.QtGui import QPixmap, QIcon
+from PyQt6.QtCore import QEvent, Qt, QSize, QThread, pyqtSignal, QTimer
+from PyQt6.QtGui import QPixmap, QIcon
 from image_labeler import ImageLabeler, LabelerType
 from utils import translate_text
 from windows.model_config_dialog import ModelConfigDialog
@@ -74,12 +74,12 @@ class TextEditDelegate(QStyledItemDelegate):
         return editor
         
     def setEditorData(self, editor, index):
-        value = index.model().data(index, Qt.EditRole)
+        value = index.model().data(index, Qt.ItemDataRole.EditRole)
         if value:
             editor.setText(value)
             
     def setModelData(self, editor, model, index):
-        model.setData(index, editor.toPlainText(), Qt.EditRole)
+        model.setData(index, editor.toPlainText(), Qt.ItemDataRole.EditRole)
         # 仅在英文打标列被编辑时设置内容修改
         # 递归查找父级窗口，直到找到 ImageLabelAssistant 实例
         widget = model.parent()
@@ -100,21 +100,21 @@ class ImageDelegate(QStyledItemDelegate):
         self.parent_widget = parent  # 允许访问主窗口方法
 
     def paint(self, painter, option, index):
-        if index.data(Qt.UserRole):
-            image_path = index.data(Qt.UserRole)
+        if index.data(Qt.ItemDataRole.UserRole):
+            image_path = index.data(Qt.ItemDataRole.UserRole)
             # 先从缓存获取原始缩略图（100x100），再根据单元格实际大小缩放显示
             if self.parent_widget and hasattr(self.parent_widget, 'get_thumbnail'):
                 base_thumbnail = self.parent_widget.get_thumbnail(image_path)
             else:
-                base_thumbnail = QPixmap(image_path).scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                base_thumbnail = QPixmap(image_path).scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             # 跟随单元格大小等比例缩放
             cell_width = option.rect.width() - 10  # 保持原有边距
             cell_height = option.rect.height() - 10
             scaled_image = base_thumbnail.scaled(
                 cell_width,
                 cell_height,
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
             )
             # 绘制图片，在单元格中居中
             x = option.rect.x() + (option.rect.width() - scaled_image.width()) / 2
@@ -204,8 +204,17 @@ class LabelingThread(QThread):
 class ImageLabelAssistant(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.thumbnail_cache = {}  # 缩略图缓存
+        # 设置窗口标志和状态
+        self.setWindowFlags(Qt.WindowType.Window)
+        self.setWindowState(Qt.WindowState.WindowMaximized)
+        
+        # 设置窗口最小大小
+        screen = QApplication.primaryScreen().availableGeometry()
+        self.setMinimumSize(int(screen.width() / 4 * 3), int(screen.height() / 4 * 3))
+        
         self.init_ui()
+
+        self.thumbnail_cache = {}  # 缩略图缓存
         self.current_path = ""
         self.image_files = []
         self.content_modified = False  # 标记内容是否被修改
@@ -216,14 +225,11 @@ class ImageLabelAssistant(QMainWindow):
         # 加载保存的目录列表和配置
         self.load_data()
         
-        # 全屏显示
-        self.showMaximized()
-        
     def init_ui(self):
         self.setWindowTitle("图像打标助手 by liuqianhong")
         
         # 创建主分割器
-        main_splitter = QSplitter(Qt.Horizontal)
+        main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.setCentralWidget(main_splitter)
         
         # 左侧区域
@@ -276,7 +282,7 @@ class ImageLabelAssistant(QMainWindow):
         trigger_prompt_layout.setStretch(0, 0)
         trigger_prompt_layout.setStretch(1, 1)
         # splitter分隔目录和触发词+提示词整体
-        dir_trigger_splitter = QSplitter(Qt.Vertical)
+        dir_trigger_splitter = QSplitter(Qt.Orientation.Vertical)
         dir_trigger_splitter.addWidget(self.dir_list)
         dir_trigger_splitter.addWidget(trigger_prompt_widget)
         left_layout.addWidget(dir_trigger_splitter)
@@ -343,11 +349,24 @@ class ImageLabelAssistant(QMainWindow):
         self.table = QTableWidget()
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels(["图像", "英文打标", "中文翻译", "翻译", "打标"])
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        # 设置列宽：图片列固定200，英文和中文列自动拉伸，按钮列固定宽度
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(0, 200)  # 图片列固定200宽度
+
+        # 英文列自动拉伸
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+
+        # 中文列自动拉伸
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(3, 120)
+        
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(4, 120)
+
         # 设置可编辑模式
-        self.table.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.EditKeyPressed)
         # 连接表格修改信号
         self.table.itemChanged.connect(self.on_table_item_changed)
         # 设置委托
@@ -359,13 +378,22 @@ class ImageLabelAssistant(QMainWindow):
         # 设置默认行高
         self.table.verticalHeader().setDefaultSectionSize(200)
         # 设置行高可以手动调整
-        self.table.verticalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        
         # 绑定双击信号
         self.table.cellDoubleClicked.connect(self.on_table_cell_double_clicked)
         # 懒加载支持：滚动时动态加载可见区域的内容
         self.table.viewport().installEventFilter(self)
+
         right_layout.addWidget(self.table)
+        
         main_splitter.addWidget(right_widget)
+
+        # 设置 main_splitter 的初始大小，left_widget 占 20%，right_widget 占 80%
+        def set_main_splitter_sizes():
+            total = self.width() or 1000  # 防止窗口尚未显示时宽度为0
+            main_splitter.setSizes([int(total * 0.2), int(total * 0.8)])
+        QTimer.singleShot(0, set_main_splitter_sizes)
         
     def show_model_config(self, tab_index=0):
         """显示模型配置对话框"""
@@ -379,13 +407,13 @@ class ImageLabelAssistant(QMainWindow):
         # 先显示对话框，然后再调整位置，这样可以确保对话框大小已经计算出来
         config_dialog.show()
         frameGm = config_dialog.frameGeometry()
-        screen = QDesktopWidget().availableGeometry().center()
+        screen = QApplication.primaryScreen().availableGeometry().center()
         frameGm.moveCenter(screen)
         config_dialog.move(frameGm.topLeft())
         config_dialog.hide()
         
         # 显示对话框
-        config_dialog.exec_()
+        config_dialog.exec()
     
     def load_data(self):
         """从配置模块加载保存的目录列表和配置"""
@@ -420,7 +448,12 @@ class ImageLabelAssistant(QMainWindow):
     
     def browse_directory(self):
         """打开文件对话框选择目录，并直接添加到列表"""
-        directory = QFileDialog.getExistingDirectory(self, "选择图像目录")
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            "选择图像目录",
+            "",  # 默认目录
+            QFileDialog.Option.ShowDirsOnly | QFileDialog.Option.DontUseNativeDialog
+        )
         if directory:
             # 只做提示Label，不再 setText
             # 检查目录是否有效
@@ -448,11 +481,11 @@ class ImageLabelAssistant(QMainWindow):
                 self, 
                 "确认删除", 
                 f"确定要删除目录 '{current_item.text()}' 吗？",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No  # 默认选择"否"
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No  # 默认选择"否"
             )
             
-            if result != QMessageBox.Yes:
+            if result != QMessageBox.StandardButton.Yes:
                 return
                 
             self.dir_list.takeItem(self.dir_list.row(current_item))
@@ -499,10 +532,10 @@ class ImageLabelAssistant(QMainWindow):
                 self, 
                 f"确认{action_text}", 
                 f"当前表格内容已修改但未保存，{action_text}目录将丢失这些修改。\n\n是否继续{action_text}？",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No  # 默认选择"否"
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No  # 默认选择"否"
             )
-            if result != QMessageBox.Yes:
+            if result != QMessageBox.StandardButton.Yes:
                 return
 
         # 清理缩略图缓存
@@ -571,7 +604,7 @@ class ImageLabelAssistant(QMainWindow):
             # 只创建空的 QTableWidgetItem，实际缩略图数据懒加载
             try:
                 item = QTableWidgetItem()
-                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.table.setItem(i, 0, item)
                 txt_file_path = os.path.splitext(image_path)[0] + ".txt"
                 en_label = ""
@@ -583,14 +616,14 @@ class ImageLabelAssistant(QMainWindow):
                         print(f"读取标签文件出错: {e}")
                 if en_label:
                     item = QTableWidgetItem(en_label)
-                    item.setFlags(item.flags() | Qt.ItemIsEditable)
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
                     self.table.setItem(i, 1, item)
                 else:
                     item = QTableWidgetItem("")
-                    item.setFlags(item.flags() | Qt.ItemIsEditable)
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
                     self.table.setItem(i, 1, item)
                 item = QTableWidgetItem("")
-                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.table.setItem(i, 2, item)
                 translate_button = QPushButton("翻译")
                 translate_button.clicked.connect(lambda _, row=i: self.translate_label(row))
@@ -608,8 +641,7 @@ class ImageLabelAssistant(QMainWindow):
     def eventFilter(self, obj, event):
         # 针对表格的懒加载优化
         if obj == self.table.viewport():
-            from PyQt5.QtCore import QEvent
-            if event.type() in (QEvent.Paint, QEvent.Resize, QEvent.Wheel, QEvent.Scroll):
+            if event.type() in (QEvent.Type.Paint, QEvent.Type.Resize, QEvent.Type.Wheel, QEvent.Type.Scroll):
                 self.lazy_load_table_images()
         return super().eventFilter(obj, event)
 
@@ -618,11 +650,11 @@ class ImageLabelAssistant(QMainWindow):
         visible_rows = self.get_visible_rows()
         for row in visible_rows:
             item = self.table.item(row, 0)
-            if item and not item.data(Qt.UserRole):
+            if item and not item.data(Qt.ItemDataRole.UserRole):
                 # 只在未加载过缩略图时加载
                 image_path = self.image_files[row]
-                item.setData(Qt.UserRole, image_path)
-                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                item.setData(Qt.ItemDataRole.UserRole, image_path)
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         # 强制刷新可见区域
         self.table.viewport().update()
 
@@ -638,22 +670,6 @@ class ImageLabelAssistant(QMainWindow):
 
     def label_image(self, row):
         """标注单个图像"""
-        # 如果使用非Gemini和非智谱AI的模型，显示加载提示
-        if self.model_combo.currentIndex() > 0 and self.model_combo.currentText() != "智谱AI":  # Huggingface模型
-            # 获取当前选择的模型名称
-            model_id = self.model_combo.currentText()
-            model_short_name = model_id.split('/')[-1]
-            
-            # 如果是首次使用该模型，显示加载提示
-            if self.labeler.hf_model is None or self.labeler.hf_model.get("model_id") != model_id:
-                # 显示加载消息
-                msg = QMessageBox(self)
-                msg.setIcon(QMessageBox.Information)
-                msg.setText(f"正在加载模型 {model_short_name}，这可能需要几分钟时间...\n首次使用时需要下载模型（约2GB）")
-                msg.setWindowTitle("加载模型")
-                msg.show()
-                QApplication.processEvents()  # 确保UI能够更新
-                self.msg = msg  # 保存引用以便后续关闭
         
         image_path = self.image_files[row]
         
@@ -672,10 +688,6 @@ class ImageLabelAssistant(QMainWindow):
         self.labeling_thread.labeling_done.connect(self.on_labeling_done)
         self.labeling_thread.labeling_failed.connect(self.on_labeling_failed)
         self.labeling_thread.start()
-        
-        # 关闭加载提示（如果存在）
-        if hasattr(self, 'msg') and self.msg.isVisible():
-            self.msg.close()
     
     def on_labeling_done(self, row, result):
         """打标成功的回调函数"""
@@ -695,14 +707,14 @@ class ImageLabelAssistant(QMainWindow):
         
         # 更新英文描述（只使用description部分）
         item = QTableWidgetItem(description)
-        item.setFlags(item.flags() | Qt.ItemIsEditable)
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
         self.table.setItem(row, 1, item)
         
         # 更新中文翻译，如果有的话
         if zh_translation:
             # Gemini已提供中文翻译
             item = QTableWidgetItem(zh_translation)
-            item.setFlags(item.flags() & ~Qt.ItemIsEditable)  # 设置为不可编辑
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # 设置为不可编辑
             self.table.setItem(row, 2, item)
 
         # 恢复信号连接
@@ -765,7 +777,7 @@ class ImageLabelAssistant(QMainWindow):
         
         # 更新中文翻译
         item = QTableWidgetItem(translated)
-        item.setFlags(item.flags() & ~Qt.ItemIsEditable)  # 设置为不可编辑
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # 设置为不可编辑
         self.table.setItem(row, 2, item)
         
         # 恢复信号连接
@@ -783,7 +795,7 @@ class ImageLabelAssistant(QMainWindow):
         """翻译失败的回调函数"""
         # 更新中文翻译为错误信息
         item = QTableWidgetItem(error_msg)
-        item.setFlags(item.flags() & ~Qt.ItemIsEditable)  # 设置为不可编辑
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # 设置为不可编辑
         self.table.setItem(row, 2, item)
         
         # 恢复翻译按钮
@@ -866,28 +878,11 @@ class ImageLabelAssistant(QMainWindow):
             self, 
             "确认操作", 
             "此操作将标注所有未标注的图像，是否继续？",
-            QMessageBox.Yes | QMessageBox.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
-        if result != QMessageBox.Yes:
+        if result != QMessageBox.StandardButton.Yes:
             return
-            
-        # 如果使用非Gemini和非智谱AI的模型，显示加载提示
-        if self.model_combo.currentIndex() > 0 and self.model_combo.currentText() != "智谱AI":  # Huggingface模型
-            # 获取当前选择的模型名称
-            model_id = self.model_combo.currentText()
-            model_short_name = model_id.split('/')[-1]
-            
-            # 如果是首次使用该模型，显示加载提示
-            if self.labeler.hf_model is None or self.labeler.hf_model.get("model_id") != model_id:
-                # 显示加载消息
-                msg = QMessageBox(self)
-                msg.setIcon(QMessageBox.Information)
-                msg.setText(f"正在加载模型 {model_short_name}，这可能需要几分钟时间...\n首次使用时需要下载模型（约2GB）")
-                msg.setWindowTitle("加载模型")
-                msg.show()
-                QApplication.processEvents()  # 确保UI能够更新
-                self.msg = msg  # 保存引用以便后续关闭
         
         # 收集需要标注的图像
         images_to_label = []
@@ -923,10 +918,6 @@ class ImageLabelAssistant(QMainWindow):
         
         # 启动线程
         self.batch_labeling_thread.start()
-        
-        # 关闭加载提示（如果存在）
-        if hasattr(self, 'msg') and self.msg.isVisible():
-            self.msg.close()
     
     def on_all_labeling_completed(self, success_count):
         """所有标注完成时的处理"""
@@ -999,9 +990,9 @@ class ImageLabelAssistant(QMainWindow):
                     self,
                     "API配置",
                     "您尚未配置Gemini API，无法使用Gemini打标功能。\n\n是否现在配置？",
-                    QMessageBox.Yes | QMessageBox.No
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                 )
-                if result == QMessageBox.Yes:
+                if result == QMessageBox.StandardButton.Yes:
                     self.show_model_config(0)  # 显示Gemini选项卡
                 else:
                     QMessageBox.information(self, "功能受限", "由于未配置Gemini API，打标功能将不可用。\n\n您随时可以通过左侧的'配置API'按钮进行配置。")
@@ -1018,9 +1009,9 @@ class ImageLabelAssistant(QMainWindow):
                     self,
                     "API配置",
                     "您尚未配置智谱 API，无法使用智谱打标功能。\n\n是否现在配置？",
-                    QMessageBox.Yes | QMessageBox.No
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                 )
-                if result == QMessageBox.Yes:
+                if result == QMessageBox.StandardButton.Yes:
                     self.show_model_config(1)  # 显示智谱AI选项卡
                 else:
                     QMessageBox.information(self, "功能受限", "由于未配置智谱 API，打标功能将不可用。\n\n您随时可以通过左侧的'配置API'按钮进行配置。")
@@ -1040,7 +1031,7 @@ class ImageLabelAssistant(QMainWindow):
         # 只缩小，不放大
         if pixmap.width() > max_thumb_size or pixmap.height() > max_thumb_size:
             thumbnail = pixmap.scaled(
-                max_thumb_size, max_thumb_size, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                max_thumb_size, max_thumb_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
             )
         else:
             thumbnail = pixmap
@@ -1052,10 +1043,10 @@ class ImageLabelAssistant(QMainWindow):
         if column == 0:
             item = self.table.item(row, 0)
             if item is not None:
-                image_path = item.data(Qt.UserRole)
+                image_path = item.data(Qt.ItemDataRole.UserRole)
                 if image_path:
                     dlg = ImageDialog(image_path, self)
-                    dlg.exec_()
+                    dlg.exec()
 
 def load_stylesheet():
     """加载QSS样式表"""
@@ -1074,4 +1065,5 @@ if __name__ == "__main__":
     
     window = ImageLabelAssistant()
     window.show()
-    sys.exit(app.exec_())
+
+    sys.exit(app.exec())

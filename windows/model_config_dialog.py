@@ -1,7 +1,7 @@
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QWidget, QTabWidget, QHBoxLayout, QLabel, QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox, QPushButton, QGroupBox, QCheckBox, QFormLayout, QMessageBox
 )
-from PyQt5.QtCore import Qt
+from PyQt6.QtCore import Qt
 import config
 
 class ModelConfigDialog(QDialog):
@@ -12,7 +12,7 @@ class ModelConfigDialog(QDialog):
         self.layout = QVBoxLayout(self)
         
         # 设置对话框居中显示
-        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)  # 移除帮助按钮
+        self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)  # 移除帮助按钮
         
         # 创建选项卡
         self.tabs = QTabWidget()
